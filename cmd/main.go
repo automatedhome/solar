@@ -191,6 +191,7 @@ func main() {
 		log.Println("Waiting 15s for sensors data...")
 		time.Sleep(15 * time.Second)
 	}
+	log.Println("Starting with sensors data received: %+v", sensors)
 
 	// Step 2. - RUN forever
 	reducedTill := time.Now().Add(30 * time.Minute)

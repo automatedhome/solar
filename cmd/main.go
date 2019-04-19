@@ -165,18 +165,9 @@ func main() {
 
 	// subscribe to topics
 	var topics []string
-	topics = append(topics, sensors.solarIn.addr)
-	topics = append(topics, sensors.solarOut.addr)
-	topics = append(topics, sensors.solarUp.addr)
-	topics = append(topics, sensors.tankUp.addr)
-	topics = append(topics, settings.solarCritical.addr)
-	topics = append(topics, settings.solarOn.addr)
-	topics = append(topics, settings.solarOff.addr)
-	topics = append(topics, settings.tankMax.addr)
-	topics = append(topics, settings.flow.tempMin.addr)
-	topics = append(topics, settings.flow.tempMax.addr)
-	topics = append(topics, settings.flow.dutyMin.addr)
-	topics = append(topics, settings.flow.dutyMax.addr)
+	topics = append(topics, sensors.solarIn.addr, sensors.solarOut.addr, sensors.solarUp.addr, sensors.tankUp.addr)
+	topics = append(topics, settings.solarCritical.addr, settings.solarOn.addr, settings.solarOff.addr, settings.tankMax.addr)
+	topics = append(topics, settings.flow.tempMin.addr, settings.flow.tempMax.addr, settings.flow.dutyMin.addr, settings.flow.dutyMax.addr)
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 

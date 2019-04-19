@@ -165,9 +165,6 @@ func main() {
 
 	// subscribe to topics
 	var topics []string
-	topics = append(topics, actuators.flow)
-	topics = append(topics, actuators.pump)
-	topics = append(topics, actuators.sw)
 	topics = append(topics, sensors.solarIn.addr)
 	topics = append(topics, sensors.solarOut.addr)
 	topics = append(topics, sensors.solarUp.addr)
@@ -191,7 +188,7 @@ func main() {
 		log.Println("Waiting 15s for sensors data...")
 		time.Sleep(15 * time.Second)
 	}
-	log.Println("Starting with sensors data received: %+v", sensors)
+	log.Printf("Starting with sensors data received: %+v\n", sensors)
 
 	// Step 2. - RUN forever
 	reducedTill := time.Now().Add(30 * time.Minute)

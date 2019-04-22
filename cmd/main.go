@@ -214,8 +214,8 @@ func main() {
 				start()
 			}
 			flow := calculateFlow()
-			if flow == lastFlow {
-				client.Publish(actuators.sw, 0, false, fmt.Sprintf("%.2f", flow))
+			if flow != lastFlow {
+				client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", flow))
 				lastFlow = flow
 			}
 			reducedTill = time.Now().Add(30 * time.Minute)

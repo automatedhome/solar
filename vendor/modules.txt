@@ -1,0 +1,9 @@
+# github.com/automatedhome/common v0.0.0-20190614135833-2728818c3f91
+github.com/automatedhome/common/pkg/mqttclient
+# github.com/eclipse/paho.mqtt.golang v1.2.0
+github.com/eclipse/paho.mqtt.golang
+github.com/eclipse/paho.mqtt.golang/packets
+# golang.org/x/net v0.0.0-20190613194153-d28f0bde5980
+golang.org/x/net/proxy
+golang.org/x/net/websocket
+golang.org/x/net/internal/socks

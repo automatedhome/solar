@@ -13,15 +13,8 @@ import (
 )
 
 type DataPoint struct {
-	v    float64
+	val  float64
 	addr string
-}
-
-type FlowRegulator struct {
-	dutyMin DataPoint
-	tempMin DataPoint
-	dutyMax DataPoint
-	tempMax DataPoint
 }
 
 type Settings struct {
@@ -29,7 +22,12 @@ type Settings struct {
 	solarOn       DataPoint
 	solarOff      DataPoint
 	tankMax       DataPoint
-	flow          FlowRegulator
+	flow          struct {
+		dutyMin DataPoint
+		tempMin DataPoint
+		dutyMax DataPoint
+		tempMax DataPoint
+	} `yaml:"flow"`
 }
 
 type Sensors struct {
@@ -40,9 +38,15 @@ type Sensors struct {
 }
 
 type Actuators struct {
-	pump string
-	sw   string
-	flow string
+	pump string `yaml:"pump"`
+	sw   string `yaml:"switch"`
+	flow string `yaml:"flow"`
+}
+
+type Config struct {
+	actuators Actuators `yaml:"actuators"`
+	sensors   Sensors   `yaml:"sensors"`
+	settings  Settings  `yaml:"settings"`
 }
 
 var settings Settings
@@ -59,29 +63,29 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 	}
 	switch message.Topic() {
 	case sensors.solarUp.addr:
-		sensors.solarUp.v = value
+		sensors.solarUp.val = value
 	case sensors.solarIn.addr:
-		sensors.solarIn.v = value
+		sensors.solarIn.val = value
 	case sensors.solarOut.addr:
-		sensors.solarOut.v = value
+		sensors.solarOut.val = value
 	case sensors.tankUp.addr:
-		sensors.tankUp.v = value
+		sensors.tankUp.val = value
 	case settings.solarCritical.addr:
-		settings.solarCritical.v = value
+		settings.solarCritical.val = value
 	case settings.solarOn.addr:
-		settings.solarOn.v = value
+		settings.solarOn.val = value
 	case settings.solarOff.addr:
-		settings.solarOff.v = value
+		settings.solarOff.val = value
 	case settings.tankMax.addr:
-		settings.tankMax.v = value
+		settings.tankMax.val = value
 	case settings.flow.dutyMin.addr:
-		settings.flow.dutyMin.v = value
+		settings.flow.dutyMin.val = value
 	case settings.flow.dutyMax.addr:
-		settings.flow.dutyMax.v = value
+		settings.flow.dutyMax.val = value
 	case settings.flow.tempMin.addr:
-		settings.flow.tempMin.v = value
+		settings.flow.tempMin.val = value
 	case settings.flow.tempMax.addr:
-		settings.flow.tempMax.v = value
+		settings.flow.tempMax.val = value
 	}
 }
 
@@ -90,7 +94,7 @@ func stop(reason string) {
 		log.Println("Stopping: " + reason)
 		client.Publish(actuators.pump, 0, false, "0")
 		client.Publish(actuators.sw, 0, false, "0")
-		client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", settings.flow.dutyMin.v))
+		client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", settings.flow.dutyMin.val))
 		circuitRunning = false
 	}
 }
@@ -114,16 +118,16 @@ func calculateFlow() float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	delta := sensors.solarIn.v - sensors.solarOut.v
-	if delta <= settings.flow.tempMin.v {
-		return settings.flow.dutyMin.v
+	delta := sensors.solarIn.val - sensors.solarOut.val
+	if delta <= settings.flow.tempMin.val {
+		return settings.flow.dutyMin.val
 	}
-	if delta >= settings.flow.tempMax.v {
-		return settings.flow.dutyMax.v
+	if delta >= settings.flow.tempMax.val {
+		return settings.flow.dutyMax.val
 	}
 	// flow(ΔT) = a * ΔT + b
-	a := (settings.flow.dutyMax.v - settings.flow.dutyMin.v) / (settings.flow.tempMax.v - settings.flow.tempMin.v)
-	b := settings.flow.dutyMin.v - settings.flow.tempMin.v*a
+	a := (settings.flow.dutyMax.val - settings.flow.dutyMin.val) / (settings.flow.tempMax.val - settings.flow.tempMin.val)
+	b := settings.flow.dutyMin.val - settings.flow.tempMin.val*a
 	return a*delta + b
 }
 
@@ -140,10 +144,10 @@ func init() {
 	actuators.pump = "testing/solar/actuators/pump" // proxy to "evok/relay/3/set"
 	actuators.sw = "testing/solar/actuators/switch" // proxy to "evok/relay/2/set"
 
-	sensors.solarIn = DataPoint{0, "solar/temperature/in"}
-	sensors.solarOut = DataPoint{0, "solar/temperature/out"}
-	sensors.solarUp = DataPoint{0, "solar/temperature/up"}
-	sensors.tankUp = DataPoint{0, "tank/temperature/up"}
+	sensors.solarIn = DataPoint{300, "solar/temperature/in"}
+	sensors.solarOut = DataPoint{300, "solar/temperature/out"}
+	sensors.solarUp = DataPoint{300, "solar/temperature/up"}
+	sensors.tankUp = DataPoint{300, "tank/temperature/up"}
 
 	settings.solarCritical = DataPoint{90, "solar/settings/critical"}
 	settings.solarOn = DataPoint{8, "solar/settings/on"}
@@ -177,7 +181,7 @@ func main() {
 
 	// Wait for sensors data
 	for {
-		if sensors.solarIn.v != 0 && sensors.solarOut.v != 0 && sensors.solarUp.v != 0 && sensors.tankUp.v != 0 {
+		if sensors.solarIn.val != 300 && sensors.solarOut.val != 300 && sensors.solarUp.val != 300 && sensors.tankUp.val != 300 {
 			break
 		}
 		log.Println("Waiting 15s for sensors data...")
@@ -193,28 +197,28 @@ func main() {
 	for {
 		time.Sleep(1 * time.Second)
 
-		if sensors.solarUp.v >= settings.solarCritical.v {
+		if sensors.solarUp.val >= settings.solarCritical.val {
 			stop("Critical solar temperature reached")
 			continue
 		}
 
-		if sensors.solarOut.v >= sensors.solarUp.v {
+		if sensors.solarOut.val >= sensors.solarUp.val {
 			stop("Heat escape prevention (Tout >= Tsolar)")
 			continue
 		}
-		if sensors.tankUp.v > settings.tankMax.v {
+		if sensors.tankUp.val > settings.tankMax.val {
 			stop("Tank filled with hot water")
 			continue
 		}
 
-		if sensors.solarUp.v >= sensors.solarIn.v {
-			delta = (sensors.solarUp.v+sensors.solarIn.v)/2 - sensors.solarOut.v
+		if sensors.solarUp.val >= sensors.solarIn.val {
+			delta = (sensors.solarUp.val+sensors.solarIn.val)/2 - sensors.solarOut.val
 		} else {
-			delta = sensors.solarUp.v - sensors.solarOut.v
+			delta = sensors.solarUp.val - sensors.solarOut.val
 		}
 
-		if delta >= settings.solarOff.v {
-			if sensors.solarUp.v-sensors.solarOut.v > settings.solarOn.v {
+		if delta >= settings.solarOff.val {
+			if sensors.solarUp.val-sensors.solarOut.val > settings.solarOn.val {
 				start()
 			}
 			flow := calculateFlow()
@@ -227,7 +231,7 @@ func main() {
 			// Reduced heat exchange. Set flow to minimal value.
 			if !reducedSent {
 				log.Println("Entering reduced heat exchange mode.")
-				client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", settings.flow.dutyMin.v))
+				client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", settings.flow.dutyMin.val))
 				reducedSent = true
 			}
 		} else {

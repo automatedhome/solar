@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"strconv"
 	"time"
 
@@ -185,16 +186,17 @@ func main() {
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
+	msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
 	// Wait for sensors data
 	for {
 		if sensors.solarIn.val != 300 && sensors.solarOut.val != 300 && sensors.solarUp.val != 300 && sensors.tankUp.val != 300 {
 			break
 		}
-		log.Print("Waiting 15s for sensors data. Currently lacking: ")
-		if sensors.solarIn.val == 300 { log.Print("solarIn") }
-		if sensors.solarOut.val == 300 { log.Print(", solarOut") }
-		if sensors.solarUp.val == 300 { log.Print(", solarUp") }
-		if sensors.tankUp.val == 300 { log.Print(", tankUp") }
+		if sensors.solarIn.val == 300 { msg = append(msg, "solarIn") }
+		if sensors.solarOut.val == 300 { msg = append(msg, "solarOut") }
+		if sensors.solarUp.val == 300 { msg = append(msg, "solarUp") }
+		if sensors.tankUp.val == 300 { msg = append(msg, "tankUp") }
+		log.Println(strings.Join(msg, " "))
 		time.Sleep(15 * time.Second)
 	}
 	log.Printf("Starting with sensors data received: %+v\n", sensors)

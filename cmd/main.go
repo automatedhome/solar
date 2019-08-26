@@ -91,9 +91,12 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 
 func stop(reason string) {
 	if circuitRunning {
+		// Adding sleep between sending data to prevent race conditions in mqttmapper service
 		log.Println("Stopping: " + reason)
 		client.Publish(actuators.pump, 0, false, "0")
+		time.Sleep(1 * time.Second)
 		client.Publish(actuators.sw, 0, false, "0")
+		time.Sleep(1 * time.Second)
 		client.Publish(actuators.flow, 0, false, fmt.Sprintf("%.2f", settings.flow.dutyMin.val))
 		circuitRunning = false
 	}
@@ -101,9 +104,12 @@ func stop(reason string) {
 
 func start() {
 	if !circuitRunning {
+		// Adding sleep between sending data to prevent race conditions in mqttmapper service
 		log.Println("Detected optimal conditions. Harvesting.")
 		client.Publish(actuators.pump, 0, false, "1")
+		time.Sleep(1 * time.Second)
 		client.Publish(actuators.sw, 0, false, "1")
+		time.Sleep(1 * time.Second)
 		circuitRunning = true
 	}
 }
@@ -184,7 +190,11 @@ func main() {
 		if sensors.solarIn.val != 300 && sensors.solarOut.val != 300 && sensors.solarUp.val != 300 && sensors.tankUp.val != 300 {
 			break
 		}
-		log.Println("Waiting 15s for sensors data...")
+		log.Print("Waiting 15s for sensors data. Currently lacking: ")
+		if sensors.solarIn.val == 300 { log.Print("solarIn") }
+		if sensors.solarOut.val == 300 { log.Print(", solarOut") }
+		if sensors.solarUp.val == 300 { log.Print(", solarUp") }
+		if sensors.tankUp.val == 300 { log.Print(", tankUp") }
 		time.Sleep(15 * time.Second)
 	}
 	log.Printf("Starting with sensors data received: %+v\n", sensors)

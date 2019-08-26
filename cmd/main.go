@@ -146,9 +146,9 @@ func init() {
 	//actuators.flow = "solar/actuators/flow" // proxy to "evok/ao/1/set" and later to flow-controller
 	//actuators.pump = "solar/actuators/pump" // proxy to "evok/relay/3/set"
 	//actuators.sw = "solar/actuators/switch" // proxy to "evok/relay/2/set"
-	actuators.flow = "testing/solar/actuators/flow" // proxy to "evok/ao/1/set"
-	actuators.pump = "testing/solar/actuators/pump" // proxy to "evok/relay/3/set"
-	actuators.sw = "testing/solar/actuators/switch" // proxy to "evok/relay/2/set"
+	actuators.flow = "evok/ao/1/set"
+	actuators.pump = "evok/relay/3/set"
+	actuators.sw = "evok/relay/2/set"
 
 	sensors.solarIn = DataPoint{300, "solar/temperature/in"}
 	sensors.solarOut = DataPoint{300, "solar/temperature/out"}

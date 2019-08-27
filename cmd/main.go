@@ -138,6 +138,10 @@ func calculateFlow() float64 {
 	return a*delta + b
 }
 
+func init() {
+	circuitRunning = false
+}
+
 func main() {
 	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
 	clientID := flag.String("clientid", "Solar", "A clientid for the connection")

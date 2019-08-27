@@ -185,12 +185,12 @@ func main() {
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
-	msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
 	// Wait for sensors data
 	for {
 		if sensors.SolarIn.Value != lockTemp && sensors.SolarOut.Value != lockTemp && sensors.SolarUp.Value != lockTemp && sensors.TankUp.Value != lockTemp {
 			break
 		}
+		msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
 		if sensors.SolarIn.Value == 300 {
 			msg = append(msg, "solarIn")
 		}

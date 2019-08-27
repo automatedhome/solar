@@ -7,3 +7,5 @@ github.com/eclipse/paho.mqtt.golang/packets
 golang.org/x/net/proxy
 golang.org/x/net/websocket
 golang.org/x/net/internal/socks
+# gopkg.in/yaml.v2 v2.2.2
+gopkg.in/yaml.v2

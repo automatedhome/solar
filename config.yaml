@@ -1,0 +1,40 @@
+---
+actuators:
+  pump: "evok/relay/3/set"
+  switch: "evok/relay/2/set"
+  flow: "evok/ao/1/set"
+sensors:
+  solarIn:
+    address: "solar/temperature/in"
+  solarOut:
+    address: "solar/temperature/out"
+  solarUp:
+    address: "solar/temperature/up"
+  tankUp:
+    address: "tank/temperature/up"
+settings:
+  solarCritical:
+    address: "solar/settings/critical"
+    value: 90
+  solarOn:
+    address: "solar/settings/on"
+    value: 8
+  solarOff:
+    address: "solar/settings/off"
+    value: 5
+  tankMax:
+    address: "solar/settings/tank"
+    value: 65
+  flow:
+    tempMin:
+      address: "solar/settings/flow/t_min"
+      value: 5
+    tempMax:
+      address: "solar/settings/flow/t_max"
+      value: 9
+    dutyMin:
+      address: "solar/settings/flow/d_min"
+      value: 1.8
+    dutyMax:
+      address: "solar/settings/flow/d_max"
+      value: 3

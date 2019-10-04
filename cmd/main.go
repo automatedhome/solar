@@ -13,50 +13,14 @@ import (
 	"gopkg.in/yaml.v2"
 
 	mqttclient "github.com/automatedhome/common/pkg/mqttclient"
+	types "github.com/automatedhome/solar/pkg/types"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-type DataPoint struct {
-	Value   float64 `yaml:"value,omitempty"`
-	Address string  `yaml:"address"`
-}
-
-type Settings struct {
-	SolarCritical DataPoint `yaml:"solarCritical"`
-	SolarOn       DataPoint `yaml:"solarOn"`
-	SolarOff      DataPoint `yaml:"solarOff"`
-	TankMax       DataPoint `yaml:"tankMax"`
-	Flow          struct {
-		DutyMin DataPoint `yaml:"dutyMin"`
-		TempMin DataPoint `yaml:"tempMin"`
-		DutyMax DataPoint `yaml:"dutyMax"`
-		TempMax DataPoint `yaml:"tempMax"`
-	} `yaml:"flow"`
-}
-
-type Sensors struct {
-	SolarUp  DataPoint `yaml:"solarUp"`
-	SolarIn  DataPoint `yaml:"solarIn"`
-	SolarOut DataPoint `yaml:"solarOut"`
-	TankUp   DataPoint `yaml:"tankUp"`
-}
-
-type Actuators struct {
-	Pump string `yaml:"pump"`
-	Sw   string `yaml:"switch"`
-	Flow string `yaml:"flow"`
-}
-
-type Config struct {
-	Actuators Actuators `yaml:"actuators"`
-	Sensors   Sensors   `yaml:"sensors"`
-	Settings  Settings  `yaml:"settings"`
-}
-
-var config Config
-var settings Settings
-var sensors Sensors
-var actuators Actuators
+var config types.Config
+var settings types.Settings
+var sensors types.Sensors
+var actuators types.Actuators
 var client mqtt.Client
 var circuitRunning bool
 

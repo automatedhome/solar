@@ -1,5 +1,6 @@
-# github.com/automatedhome/common v0.0.0-20190614135833-2728818c3f91
+# github.com/automatedhome/common v0.0.0-20191004194836-305c32535b63
 github.com/automatedhome/common/pkg/mqttclient
+github.com/automatedhome/common/pkg/types
 # github.com/eclipse/paho.mqtt.golang v1.2.0
 github.com/eclipse/paho.mqtt.golang
 github.com/eclipse/paho.mqtt.golang/packets

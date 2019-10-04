@@ -58,23 +58,63 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 	}
 }
 
+func waitForData(lockValue float64) {
+	// Wait for sensors data
+	for {
+		if sensors.SolarIn.Value != lockValue && sensors.SolarOut.Value != lockValue && sensors.SolarUp.Value != lockValue && sensors.TankUp.Value != lockValue {
+			break
+		}
+		msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
+		if sensors.SolarIn.Value == 300 {
+			msg = append(msg, "solarIn")
+		}
+		if sensors.SolarOut.Value == 300 {
+			msg = append(msg, "solarOut")
+		}
+		if sensors.SolarUp.Value == 300 {
+			msg = append(msg, "solarUp")
+		}
+		if sensors.TankUp.Value == 300 {
+			msg = append(msg, "tankUp")
+		}
+		log.Println(strings.Join(msg, " "))
+		time.Sleep(15 * time.Second)
+	}
+	log.Printf("Starting with sensors data received: %+v\n", sensors)
+}
+
 func stop(reason string) {
 	if circuitRunning {
-		// Adding sleep between sending data to prevent race conditions in mqttmapper service
 		log.Println("Stopping: " + reason)
-		client.Publish(actuators.Pump, 0, false, "0")
-		client.Publish(actuators.Sw, 0, false, "0")
-		client.Publish(actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value))
+
+		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "0"); err != nil {
+			return
+		}
+
+		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "0"); err != nil {
+			return
+		}
+
+		if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err != nil {
+			return
+		}
+
 		circuitRunning = false
 	}
 }
 
 func start() {
 	if !circuitRunning {
-		// Adding sleep between sending data to prevent race conditions in mqttmapper service
 		log.Println("Detected optimal conditions. Harvesting.")
-		client.Publish(actuators.Pump, 0, false, "1")
-		client.Publish(actuators.Sw, 0, false, "1")
+
+		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "1"); err != nil {
+			return
+		}
+
+		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "1"); err != nil {
+			return
+		}
+
 		circuitRunning = true
 	}
 }
@@ -150,27 +190,7 @@ func main() {
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
 	// Wait for sensors data
-	for {
-		if sensors.SolarIn.Value != lockTemp && sensors.SolarOut.Value != lockTemp && sensors.SolarUp.Value != lockTemp && sensors.TankUp.Value != lockTemp {
-			break
-		}
-		msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
-		if sensors.SolarIn.Value == 300 {
-			msg = append(msg, "solarIn")
-		}
-		if sensors.SolarOut.Value == 300 {
-			msg = append(msg, "solarOut")
-		}
-		if sensors.SolarUp.Value == 300 {
-			msg = append(msg, "solarUp")
-		}
-		if sensors.TankUp.Value == 300 {
-			msg = append(msg, "tankUp")
-		}
-		log.Println(strings.Join(msg, " "))
-		time.Sleep(15 * time.Second)
-	}
-	log.Printf("Starting with sensors data received: %+v\n", sensors)
+	waitForData(lockTemp)
 
 	// Step 2. - RUN forever
 	reducedTill := time.Now().Add(30 * time.Minute)
@@ -206,16 +226,18 @@ func main() {
 			}
 			Flow := calculateFlow()
 			if Flow != lastFlow {
-				client.Publish(actuators.Flow, 0, false, fmt.Sprintf("%.2f", Flow))
-				lastFlow = Flow
+				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", Flow)); err == nil {
+					lastFlow = Flow
+				}
 			}
 			reducedTill = time.Now().Add(30 * time.Minute)
 		} else if time.Now().Before(reducedTill) {
 			// Reduced heat exchange. Set Flow to minimal value.
 			if !reducedSent {
 				log.Println("Entering reduced heat exchange mode.")
-				client.Publish(actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value))
-				reducedSent = true
+				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err == nil {
+					reducedSent = true
+				}
 			}
 		} else {
 			// Delta SolarIn - SolarOut is too low.

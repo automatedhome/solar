@@ -52,3 +52,14 @@ func New(id string, uri *url.URL, topics []string, callback mqtt.MessageHandler)
 
 	return client
 }
+
+// Publish sends message to mqtt broker and handles errors
+func Publish(client mqtt.Client, topic string, retained byte, qos bool, message string) error {
+	token := client.Publish(topic, retained, qos, message)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("Failed to publish packet: %s", token.Error())
+		return token.Error()
+	}
+	return nil
+}

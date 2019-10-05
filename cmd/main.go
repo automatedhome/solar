@@ -157,9 +157,9 @@ func failsafe(solar float64, solarCritical float64) bool {
 	return false
 }
 
-func heatprevention(solar float64, out float64) bool {
-	if solar < out {
-		stop("Heat escape prevention (Tout >= TSolar)")
+func heatescape(solar float64, in float64) bool {
+	if solar < in {
+		stop("Heat escape prevention (Tin >= TSolar)")
 		return true
 	}
 	return false
@@ -174,10 +174,10 @@ func tankfull(tank float64, max float64) bool {
 }
 
 func getDelta(solar float64, in float64, out float64) float64 {
-	if solar >= in {
-		return (solar+in)/2 - out
+	if solar >= out {
+		return (solar+out)/2 - in
 	}
-	return solar - out
+	return solar - in
 }
 
 func init() {
@@ -245,7 +245,7 @@ func main() {
 			continue
 		}
 
-		if heatprevention(sensors.SolarUp.Value, sensors.SolarOut.Value) {
+		if heatescape(sensors.SolarUp.Value, sensors.SolarIn.Value) {
 			continue
 		}
 

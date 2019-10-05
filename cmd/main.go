@@ -92,14 +92,17 @@ func stop(reason string) {
 		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "0"); err != nil {
 			return
 		}
+		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "0"); err != nil {
 			return
 		}
+		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err != nil {
 			return
 		}
+		time.Sleep(1 * time.Second)
 
 		circuitRunning = false
 	}
@@ -112,10 +115,12 @@ func start() {
 		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "1"); err != nil {
 			return
 		}
+		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "1"); err != nil {
 			return
 		}
+		time.Sleep(1 * time.Second)
 
 		circuitRunning = true
 	}

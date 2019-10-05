@@ -64,7 +64,7 @@ func waitForData(lockValue float64) {
 		if sensors.SolarIn.Value != lockValue && sensors.SolarOut.Value != lockValue && sensors.SolarUp.Value != lockValue && sensors.TankUp.Value != lockValue {
 			break
 		}
-		msg := []string{"Waiting 15s for sensors data. Currently lacking:"}
+		msg := []string{"Waiting 30s for sensors data. Currently lacking:"}
 		if sensors.SolarIn.Value == 300 {
 			msg = append(msg, "solarIn")
 		}
@@ -78,7 +78,7 @@ func waitForData(lockValue float64) {
 			msg = append(msg, "tankUp")
 		}
 		log.Println(strings.Join(msg, " "))
-		time.Sleep(15 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 	log.Printf("Starting with sensors data received: %+v\n", sensors)
 }
@@ -163,10 +163,9 @@ func main() {
 		log.Fatalf("File reading error: %v", err)
 		return
 	}
+	log.Printf("Starting with following config: %v", data)
 
-	err = yaml.UnmarshalStrict(data, &config)
-	//err = yaml.Unmarshal(data, &config)
-	if err != nil {
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		log.Fatalf("error: %v", err)
 	}
 

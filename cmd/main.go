@@ -17,12 +17,14 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-var config types.Config
-var settings types.Settings
-var sensors types.Sensors
-var actuators types.Actuators
-var client mqtt.Client
-var circuitRunning bool
+var (
+	config         types.Config
+	settings       types.Settings
+	sensors        types.Sensors
+	actuators      types.Actuators
+	client         mqtt.Client
+	circuitRunning bool
+)
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
 	value, err := strconv.ParseFloat(string(message.Payload()), 64)
@@ -142,11 +144,40 @@ func calculateFlow() float64 {
 	return a*delta + b
 }
 
-func init() {
-	circuitRunning = false
+func failsafe(solar float64, solarCritical float64) bool {
+	if solar >= solarCritical {
+		stop("Critical Solar Temperature reached")
+		return true
+	}
+	return false
 }
 
-func main() {
+func heatprevention(solar float64, out float64) bool {
+	if solar < out {
+		stop("Heat escape prevention (Tout >= TSolar)")
+		return true
+	}
+	return false
+}
+
+func tankfull(tank float64, max float64) bool {
+	if tank > max {
+		stop("Tank filled with hot water")
+		return true
+	}
+	return false
+}
+
+func getDelta(solar float64, in float64, out float64) float64 {
+	if solar >= in {
+		return (solar+in)/2 - out
+	}
+	return solar - out
+}
+
+func init() {
+	circuitRunning = false
+
 	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
 	clientID := flag.String("clientid", "Solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
@@ -172,6 +203,7 @@ func main() {
 	settings = config.Settings
 	actuators = config.Actuators
 	sensors = config.Sensors
+
 	// set initial sensors values and ignore ones provided by config file
 	// this is used as a locking mechanism to prevent starting control loop without current sensors data
 	lockTemp := 300.0
@@ -190,57 +222,54 @@ func main() {
 
 	// Wait for sensors data
 	waitForData(lockTemp)
+}
 
-	// Step 2. - RUN forever
-	reducedTill := time.Now().Add(30 * time.Minute)
-	reducedSent := false
+func main() {
+	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
+	reductionDuration := 30 * time.Minute
+	reducedTill := time.Now().Add(reductionDuration)
+	reducedMode := false
 	delta := 0.0
 	lastFlow := 0.0
 	for {
 		time.Sleep(1 * time.Second)
 
-		if sensors.SolarUp.Value >= settings.SolarCritical.Value {
-			stop("Critical Solar Temperature reached")
+		if failsafe(sensors.SolarUp.Value, settings.SolarCritical.Value) {
 			continue
 		}
 
-		if sensors.SolarOut.Value >= sensors.SolarUp.Value {
-			stop("Heat escape prevention (Tout >= TSolar)")
-			continue
-		}
-		if sensors.TankUp.Value > settings.TankMax.Value {
-			stop("Tank filled with hot water")
+		if heatprevention(sensors.SolarUp.Value, sensors.SolarOut.Value) {
 			continue
 		}
 
-		if sensors.SolarUp.Value >= sensors.SolarIn.Value {
-			delta = (sensors.SolarUp.Value+sensors.SolarIn.Value)/2 - sensors.SolarOut.Value
-		} else {
-			delta = sensors.SolarUp.Value - sensors.SolarOut.Value
+		if tankfull(sensors.TankUp.Value, settings.TankMax.Value) {
+			continue
 		}
+
+		delta = getDelta(sensors.SolarUp.Value, sensors.SolarIn.Value, sensors.SolarOut.Value)
 
 		if delta >= settings.SolarOff.Value {
 			if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
 				start()
 			}
-			Flow := calculateFlow()
-			if Flow != lastFlow {
-				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", Flow)); err == nil {
-					lastFlow = Flow
+			flow := calculateFlow()
+			if flow != lastFlow {
+				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", flow)); err == nil {
+					lastFlow = flow
 				}
 			}
-			reducedTill = time.Now().Add(30 * time.Minute)
+			reducedTill = time.Now().Add(reductionDuration)
 		} else if time.Now().Before(reducedTill) {
 			// Reduced heat exchange. Set Flow to minimal value.
-			if !reducedSent {
+			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode.")
 				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err == nil {
-					reducedSent = true
+					reducedMode = true
 				}
 			}
 		} else {
 			// Delta SolarIn - SolarOut is too low.
-			reducedSent = false
+			reducedMode = false
 			stop("In-Out delta too low.")
 		}
 	}

@@ -1,4 +1,5 @@
 ---
+#reduced_heat_exchange: 30
 actuators:
   pump: "evok/relay/3/set"
   switch: "evok/relay/2/set"

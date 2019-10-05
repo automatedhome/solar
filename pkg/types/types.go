@@ -31,6 +31,7 @@ type Actuators struct {
 }
 
 type Config struct {
+	//ReducedTime float64   `yaml:"reduced_heat_exchange"`
 	Actuators Actuators `yaml:"actuators"`
 	Sensors   Sensors   `yaml:"sensors"`
 	Settings  Settings  `yaml:"settings"`

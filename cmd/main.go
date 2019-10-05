@@ -225,6 +225,8 @@ func init() {
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
+	stop("reset system")
+
 	// Wait for sensors data
 	waitForData(lockTemp)
 }

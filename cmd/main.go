@@ -199,7 +199,7 @@ func init() {
 		log.Fatalf("File reading error: %v", err)
 		return
 	}
-	log.Printf("Starting with following config: %v", data)
+	log.Printf("Reading following config from config file: %+v", data)
 
 	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		log.Fatalf("error: %v", err)

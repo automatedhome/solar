@@ -90,16 +90,19 @@ func stop(reason string) {
 		log.Println("Stopping: " + reason)
 
 		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "0"); err != nil {
+			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "0"); err != nil {
+			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err != nil {
+			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
@@ -113,11 +116,13 @@ func start() {
 		log.Println("Detected optimal conditions. Harvesting.")
 
 		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "1"); err != nil {
+			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
 		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "1"); err != nil {
+			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
@@ -146,6 +151,7 @@ func calculateFlow() float64 {
 	// Flow(ΔT) = a * ΔT + b
 	a := (settings.Flow.DutyMax.Value - settings.Flow.DutyMin.Value) / (settings.Flow.TempMax.Value - settings.Flow.TempMin.Value)
 	b := settings.Flow.DutyMin.Value - settings.Flow.TempMin.Value*a
+	log.Printf("Setting flow to %.2f", a*delta+b)
 	return a*delta + b
 }
 

@@ -12,8 +12,10 @@ type Settings struct {
 	Flow          struct {
 		DutyMin common.DataPoint `yaml:"dutyMin"`
 		TempMin common.DataPoint `yaml:"tempMin"`
+		FlowMin common.DataPoint `yaml:"flowMin"`
 		DutyMax common.DataPoint `yaml:"dutyMax"`
 		TempMax common.DataPoint `yaml:"tempMax"`
+		FlowMax common.DataPoint `yaml:"flowMax"`
 	} `yaml:"flow"`
 }
 
@@ -22,6 +24,7 @@ type Sensors struct {
 	SolarIn  common.DataPoint `yaml:"solarIn"`
 	SolarOut common.DataPoint `yaml:"solarOut"`
 	TankUp   common.DataPoint `yaml:"tankUp"`
+	FlowRate common.DataPoint `yaml:"flowRate"`
 }
 
 type Actuators struct {

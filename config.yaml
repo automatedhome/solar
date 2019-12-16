@@ -13,6 +13,8 @@ sensors:
     address: "solar/temperature/up"
   tankUp:
     address: "tank/temperature/up"
+  flowRate:
+    address: "solar/flow/rate"
 settings:
   solarCritical:
     address: "solar/settings/critical"
@@ -33,9 +35,15 @@ settings:
     tempMax:
       address: "solar/settings/flow/t_max"
       value: 9
+    flowMin:
+      address: "solar/settings/flow/f_min"
+      value: 0.6
+    flowMax:
+      address: "solar/settings/flow/f_max"
+      value: 3.2
     dutyMin:
       address: "solar/settings/flow/d_min"
-      value: 1.8
+      value: 1.6
     dutyMax:
       address: "solar/settings/flow/d_max"
-      value: 3
+      value: 2.8

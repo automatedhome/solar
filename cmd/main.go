@@ -202,7 +202,7 @@ func setFlow(value float64) error {
 		return nil
 	}
 
-	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", value))
+	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.1f", value))
 	if err != nil {
 		return err
 	}

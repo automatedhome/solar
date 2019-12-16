@@ -131,6 +131,7 @@ func start() {
 	}
 }
 
+// flow can range from 0 to 10.
 func calculateFlow() float64 {
 	// Flow function:
 	// ^ [Flow]                        | s_min, ΔT <= T_min
@@ -249,7 +250,7 @@ func init() {
 func main() {
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute
-	reducedTill := time.Now().Add(reductionDuration)
+	reducedTill := time.Now()
 	reducedMode := false
 	delta := 0.0
 	lastFlow := 0.0

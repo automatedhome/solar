@@ -207,13 +207,6 @@ func setFlow(value float64) error {
 		return err
 	}
 
-	//FIXME: clean this up after introducing flow controller
-	time.Sleep(100 * time.Millisecond)
-	err = mqttclient.Publish(client, "solar/flow/value", 0, false, fmt.Sprintf("%.2f", value))
-	if err != nil {
-		return err
-	}
-
 	lastFlow = value
 	return nil
 }

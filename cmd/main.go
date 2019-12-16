@@ -151,8 +151,17 @@ func calculateFlow() float64 {
 	// Flow(ΔT) = a * ΔT + b
 	a := (settings.Flow.DutyMax.Value - settings.Flow.DutyMin.Value) / (settings.Flow.TempMax.Value - settings.Flow.TempMin.Value)
 	b := settings.Flow.DutyMin.Value - settings.Flow.TempMin.Value*a
-	log.Printf("Setting flow to %.2f", a*delta+b)
-	return a*delta + b
+	flow := a*delta + b
+
+	if flow > settings.Flow.DutyMax.Value {
+		flow = settings.Flow.DutyMax.Value
+	}
+	if flow < settings.Flow.DutyMin.Value {
+		flow = settings.Flow.DutyMin.Value
+	}
+
+	log.Printf("Setting flow to %.2f", flow)
+	return flow
 }
 
 func failsafe(solar float64, solarCritical float64) bool {

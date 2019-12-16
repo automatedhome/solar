@@ -24,6 +24,7 @@ var (
 	actuators      types.Actuators
 	client         mqtt.Client
 	circuitRunning bool
+	lastFlow       float64
 )
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -196,11 +197,32 @@ func getDelta(solar float64, in float64, out float64) float64 {
 	return solar - in
 }
 
+func setFlow(value float64) error {
+	if value == lastFlow {
+		return nil
+	}
+
+	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", value))
+	if err != nil {
+		return err
+	}
+
+	//FIXME: clean this up after introducing flow controller
+	time.Sleep(100 * time.Millisecond)
+	err = mqttclient.Publish(client, "solar/flow/value", 0, false, fmt.Sprintf("%.2f", value))
+	if err != nil {
+		return err
+	}
+
+	lastFlow = value
+	return nil
+}
+
 func init() {
 	circuitRunning = false
 
 	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
-	clientID := flag.String("clientid", "Solar", "A clientid for the connection")
+	clientID := flag.String("clientid", "solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
 	flag.Parse()
 
@@ -224,6 +246,7 @@ func init() {
 	settings = config.Settings
 	actuators = config.Actuators
 	sensors = config.Sensors
+	lastFlow = 0.0
 
 	// set initial sensors values and ignore ones provided by config file
 	// this is used as a locking mechanism to prevent starting control loop without current sensors data
@@ -253,7 +276,6 @@ func main() {
 	reducedTill := time.Now()
 	reducedMode := false
 	delta := 0.0
-	lastFlow := 0.0
 	for {
 		time.Sleep(1 * time.Second)
 
@@ -276,17 +298,17 @@ func main() {
 				start()
 			}
 			flow := calculateFlow()
-			if flow != lastFlow {
-				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", flow)); err == nil {
-					lastFlow = flow
-				}
+			if err := setFlow(flow); err != nil {
+				log.Println(err)
 			}
 			reducedTill = time.Now().Add(reductionDuration)
 		} else if time.Now().Before(reducedTill) {
 			// Reduced heat exchange. Set Flow to minimal value.
 			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode.")
-				if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err == nil {
+				if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
+					log.Println(err)
+				} else {
 					reducedMode = true
 				}
 			}

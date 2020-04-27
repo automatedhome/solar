@@ -25,6 +25,7 @@ var (
 	client         mqtt.Client
 	circuitRunning bool
 	lastFlow       float64
+	invertFlow     bool
 )
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -102,7 +103,7 @@ func stop(reason string) {
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.2f", settings.Flow.DutyMin.Value)); err != nil {
+		if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
 			log.Println(err)
 			return
 		}
@@ -202,6 +203,11 @@ func setFlow(value float64) error {
 		return nil
 	}
 
+	// TODO: fix this lower in the chain as an actuator is an "inverted" type.
+	// Best fix would be to apply this transformation on actuator level. Sadly currently this is not possible without complicating setup.
+	if invertFlow {
+		value = 10.0 - value
+	}
 	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.1f", value))
 	if err != nil {
 		return err
@@ -217,7 +223,13 @@ func init() {
 	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
 	clientID := flag.String("clientid", "solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
+	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
 	flag.Parse()
+
+	invertFlow = *invert
+	if invertFlow {
+		log.Println("Setting inverted mode for actuator - higher voltage causes less flow")
+	}
 
 	brokerURL, err := url.Parse(*broker)
 	if err != nil {

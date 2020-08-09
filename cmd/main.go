@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v2"
 
 	mqttclient "github.com/automatedhome/common/pkg/mqttclient"
@@ -26,6 +30,33 @@ var (
 	circuitRunning bool
 	lastFlow       float64
 	invertFlow     bool
+)
+
+var (
+	heatescapeTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "solar_heat_escape_total",
+		Help: "Increase when heat escape system kicked in",
+	})
+	failsafeTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "solar_failsafe_total",
+		Help: "Increase when failsafe system kicked in",
+	})
+	tankfullTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "solar_tank_full_total",
+		Help: "Increase when heating stopped due to tank being full",
+	})
+	flowRate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_flow_rate_volts",
+		Help: "Flow rate in volts",
+	})
+	circuitRunningMetric = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_circuit_running_binary",
+		Help: "Registers when solar control circuit is running",
+	})
+	controlDelta = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_temperature_delta_celsius",
+		Help: "Temperature delta used for setting flow rate",
+	})
 )
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -110,6 +141,7 @@ func stop(reason string) {
 		time.Sleep(1 * time.Second)
 
 		circuitRunning = false
+		circuitRunningMetric.Set(0)
 	}
 }
 
@@ -130,6 +162,7 @@ func start() {
 		time.Sleep(1 * time.Second)
 
 		circuitRunning = true
+		circuitRunningMetric.Set(1)
 	}
 }
 
@@ -170,6 +203,7 @@ func calculateFlow() float64 {
 func failsafe(solar float64, solarCritical float64) bool {
 	if solar >= solarCritical {
 		stop("Critical Solar Temperature reached")
+		failsafeTotal.Inc()
 		return true
 	}
 	return false
@@ -178,6 +212,7 @@ func failsafe(solar float64, solarCritical float64) bool {
 func heatescape(solar float64, in float64) bool {
 	if solar < in {
 		stop("Heat escape prevention (Tin >= TSolar)")
+		heatescapeTotal.Inc()
 		return true
 	}
 	return false
@@ -186,15 +221,16 @@ func heatescape(solar float64, in float64) bool {
 func tankfull(tank float64, max float64) bool {
 	if tank > max {
 		stop("Tank filled with hot water")
+		tankfullTotal.Inc()
 		return true
 	}
 	return false
 }
 
 func getDelta(solar float64, in float64, out float64) float64 {
-	if solar >= out {
-		return (solar+out)/2 - in
-	}
+	// if solar >= out {
+	// 	return (solar+out)/2 - in
+	// }
 	return solar - in
 }
 
@@ -209,6 +245,7 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.1f", value))
+	flowRate.Set(value)
 	if err != nil {
 		return err
 	}
@@ -271,11 +308,16 @@ func init() {
 
 	stop("reset system")
 
+	// Expose metrics
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(":7001", nil)
+
 	// Wait for sensors data
 	waitForData(lockTemp)
 }
 
 func main() {
+
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute
 	reducedTill := time.Now()
@@ -297,6 +339,7 @@ func main() {
 		}
 
 		delta = getDelta(sensors.SolarUp.Value, sensors.SolarIn.Value, sensors.SolarOut.Value)
+		controlDelta.Set(delta)
 
 		if delta >= settings.SolarOff.Value {
 			if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {

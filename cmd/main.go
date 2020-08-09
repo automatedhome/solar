@@ -231,7 +231,8 @@ func getDelta(solar float64, in float64, out float64) float64 {
 	// if solar >= out {
 	// 	return (solar+out)/2 - in
 	// }
-	return solar - in
+	// return solar - in
+	return (solar+out)/2 - in
 }
 
 func setFlow(value float64) error {

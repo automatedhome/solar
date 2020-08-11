@@ -210,8 +210,8 @@ func failsafe(solar float64, solarCritical float64) bool {
 }
 
 func heatescape(solar float64, in float64) bool {
-	if solar < in {
-		stop("Heat escape prevention (Tin >= TSolar)")
+	if in > solar {
+		stop("Heat escape prevention (Tin > TSolar)")
 		heatescapeTotal.Inc()
 		return true
 	}
@@ -309,15 +309,19 @@ func init() {
 
 	stop("reset system")
 
-	// Expose metrics
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":7001", nil)
-
 	// Wait for sensors data
 	waitForData(lockTemp)
 }
 
 func main() {
+	go func() {
+		// Expose metrics
+		http.Handle("/metrics", promhttp.Handler())
+		err := http.ListenAndServe(":7001", nil)
+		if err != nil {
+			panic("HTTP Server for metrics exposition failed: " + err.Error())
+		}
+	}()
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute

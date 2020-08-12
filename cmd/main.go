@@ -209,15 +209,6 @@ func failsafe(solar float64, solarCritical float64) bool {
 	return false
 }
 
-func heatescape(solar float64, in float64) bool {
-	if in > solar {
-		stop("Heat escape prevention (Tin > TSolar)")
-		heatescapeTotal.Inc()
-		return true
-	}
-	return false
-}
-
 func tankfull(tank float64, max float64) bool {
 	if tank > max {
 		stop("Tank filled with hot water")
@@ -335,15 +326,18 @@ func main() {
 			continue
 		}
 
-		if heatescape(sensors.SolarUp.Value, sensors.SolarIn.Value) {
-			continue
-		}
-
 		if tankfull(sensors.TankUp.Value, settings.TankMax.Value) {
 			continue
 		}
 
 		delta = getDelta(sensors.SolarUp.Value, sensors.SolarIn.Value, sensors.SolarOut.Value)
+		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
+		if delta < 0 {
+			stop("Heat escape prevention (delta < 0)")
+			heatescapeTotal.Inc()
+			continue
+		}
+
 		controlDelta.Set(delta)
 
 		if delta >= settings.SolarOff.Value {

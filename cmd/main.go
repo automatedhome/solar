@@ -200,32 +200,6 @@ func calculateFlow() float64 {
 	return flow
 }
 
-func failsafe(solar float64, solarCritical float64) bool {
-	if solar >= solarCritical {
-		stop("Critical Solar Temperature reached")
-		failsafeTotal.Inc()
-		return true
-	}
-	return false
-}
-
-func tankfull(tank float64, max float64) bool {
-	if tank > max {
-		stop("Tank filled with hot water")
-		tankfullTotal.Inc()
-		return true
-	}
-	return false
-}
-
-func getDelta(solar float64, in float64, out float64) float64 {
-	// if solar >= out {
-	// 	return (solar+out)/2 - in
-	// }
-	// return solar - in
-	return (solar+out)/2 - in
-}
-
 func setFlow(value float64) error {
 	if value == lastFlow {
 		return nil
@@ -244,6 +218,24 @@ func setFlow(value float64) error {
 
 	lastFlow = value
 	return nil
+}
+
+func failsafe(solar float64, solarCritical float64) bool {
+	if solar >= solarCritical {
+		stop("Critical Solar Temperature reached")
+		failsafeTotal.Inc()
+		return true
+	}
+	return false
+}
+
+func tankfull(tank float64, max float64) bool {
+	if tank > max {
+		stop("Tank filled with hot water")
+		tankfullTotal.Inc()
+		return true
+	}
+	return false
 }
 
 func init() {
@@ -330,8 +322,10 @@ func main() {
 			continue
 		}
 
-		delta = getDelta(sensors.SolarUp.Value, sensors.SolarIn.Value, sensors.SolarOut.Value)
+		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
+
 		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
+		// calculation need to be based on formula: (solar+out)/2 - in
 		if delta < 0 {
 			stop("Heat escape prevention (delta < 0)")
 			heatescapeTotal.Inc()

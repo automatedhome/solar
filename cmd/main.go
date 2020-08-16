@@ -166,7 +166,7 @@ func start() {
 }
 
 // flow can range from 0 to 10.
-func calculateFlow() float64 {
+func calculateFlow(delta float64) float64 {
 	// Flow function:
 	// ^ [Flow]                        | s_min, ΔT <= T_min
 	// |                    Flow(ΔT) = | A * ΔT + B, A = (s_max - s_min) / (T_max - T_min), B = s_min - T_min * A
@@ -176,7 +176,6 @@ func calculateFlow() float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	delta := sensors.SolarIn.Value - sensors.SolarOut.Value
 	if delta <= settings.Flow.TempMin.Value {
 		return settings.Flow.DutyMin.Value
 	}
@@ -331,7 +330,7 @@ func main() {
 			if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
 				start()
 			}
-			flow := calculateFlow()
+			flow := calculateFlow(delta)
 			if err := setFlow(flow); err != nil {
 				log.Println(err)
 			}

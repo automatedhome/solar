@@ -28,7 +28,6 @@ var (
 	actuators      types.Actuators
 	client         mqtt.Client
 	circuitRunning bool
-	lastFlow       float64
 	invertFlow     bool
 )
 
@@ -195,16 +194,10 @@ func calculateFlow() float64 {
 	if flow < settings.Flow.DutyMin.Value {
 		flow = settings.Flow.DutyMin.Value
 	}
-
-	log.Printf("Setting flow to %.2f", flow)
 	return flow
 }
 
 func setFlow(value float64) error {
-	if value == lastFlow {
-		return nil
-	}
-
 	// TODO: fix this lower in the chain as an actuator is an "inverted" type.
 	// Best fix would be to apply this transformation on actuator level. Sadly currently this is not possible without complicating setup.
 	if invertFlow {
@@ -216,7 +209,8 @@ func setFlow(value float64) error {
 		return err
 	}
 
-	lastFlow = value
+	log.Printf("Setting flow to %.2f", value)
+
 	return nil
 }
 
@@ -272,7 +266,6 @@ func init() {
 	settings = config.Settings
 	actuators = config.Actuators
 	sensors = config.Sensors
-	lastFlow = 0.0
 
 	// set initial sensors values and ignore ones provided by config file
 	// this is used as a locking mechanism to prevent starting control loop without current sensors data

@@ -208,8 +208,6 @@ func setFlow(value float64) error {
 		return err
 	}
 
-	log.Printf("Setting flow to %.2f", value)
-
 	return nil
 }
 
@@ -327,7 +325,8 @@ func main() {
 		controlDelta.Set(delta)
 
 		if delta >= settings.SolarOff.Value {
-			if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
+			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
+			if delta > settings.SolarOn.Value {
 				start()
 			}
 			flow := calculateFlow(delta)

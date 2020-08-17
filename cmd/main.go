@@ -32,6 +32,7 @@ var (
 	circuitRunning     bool
 	invertFlow         bool
 	internalConfigFile string
+	lastPass           time.Time
 )
 
 var (
@@ -237,6 +238,15 @@ func httpConfig(w http.ResponseWriter, r *http.Request) {
 	w.Write(js)
 }
 
+func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
+	timeout := time.Duration(1 * time.Minute)
+	if lastPass.Add(timeout).After(time.Now()) {
+		w.WriteHeader(200)
+	} else {
+		w.WriteHeader(500)
+	}
+}
+
 func dumpConfig() {
 	var cfg types.Config
 	cfg.Sensors = sensors
@@ -327,6 +337,8 @@ func main() {
 		http.Handle("/metrics", promhttp.Handler())
 		// Expose config
 		http.HandleFunc("/config", httpConfig)
+		// Expose healthcheck
+		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)
 		if err != nil {
 			panic("HTTP Server for metrics exposition failed: " + err.Error())
@@ -340,6 +352,7 @@ func main() {
 	delta := 0.0
 	for {
 		time.Sleep(5 * time.Second)
+		lastPass = time.Now()
 
 		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
 		controlDelta.Set(delta)

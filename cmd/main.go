@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -215,6 +216,17 @@ func setFlow(value float64) error {
 	return nil
 }
 
+func httpConfig(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(settings)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
 func init() {
 	circuitRunning = false
 
@@ -276,6 +288,8 @@ func main() {
 	go func() {
 		// Expose metrics
 		http.Handle("/metrics", promhttp.Handler())
+		// Expose config
+		http.HandleFunc("/config", httpConfig)
 		err := http.ListenAndServe(":7001", nil)
 		if err != nil {
 			panic("HTTP Server for metrics exposition failed: " + err.Error())

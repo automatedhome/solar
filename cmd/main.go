@@ -312,10 +312,12 @@ func init() {
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
-	stop("reset system")
+	stop("SYSTEM RESET")
 
 	// Wait for sensors data
 	waitForData(lockTemp)
+
+	// Write config file
 	dumpConfig()
 }
 
@@ -337,19 +339,19 @@ func main() {
 	reducedMode := false
 	delta := 0.0
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
 		controlDelta.Set(delta)
 
 		if sensors.SolarUp.Value >= settings.SolarCritical.Value {
-			stop("Critical Solar Temperature reached")
+			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", sensors.SolarUp.Value))
 			failsafeTotal.Inc()
 			continue
 		}
 
 		if sensors.TankUp.Value > settings.TankMax.Value {
-			stop("Tank filled with hot water")
+			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", sensors.TankUp.Value))
 			tankfullTotal.Inc()
 			continue
 		}
@@ -357,14 +359,14 @@ func main() {
 		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
 		// calculation need to be based on formula: (solar+out)/2 - in
 		if delta < 0 {
-			stop("Heat escape prevention (delta < 0)")
+			stop(fmt.Sprintf("Heat escape prevention, delta: %f < 0", delta))
 			heatescapeTotal.Inc()
 			continue
 		}
 
-		if delta >= settings.SolarOff.Value {
+		if delta > settings.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta > settings.SolarOn.Value {
+			if delta >= settings.SolarOn.Value {
 				start()
 			}
 			flow := calculateFlow(delta)
@@ -375,7 +377,7 @@ func main() {
 		} else if time.Now().Before(reducedTill) {
 			// Reduced heat exchange. Set Flow to minimal value.
 			if !reducedMode {
-				log.Println("Entering reduced heat exchange mode.")
+				log.Println("Entering reduced heat exchange mode")
 				if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
 					log.Println(err)
 				} else {
@@ -387,7 +389,7 @@ func main() {
 			// Delta SolarIn - SolarOut is too low.
 			reducedMode = false
 			reducedModeMetric.Set(0)
-			stop("In-Out delta too low.")
+			stop(fmt.Sprintf("Temperature delta too low: %f", delta))
 		}
 	}
 }

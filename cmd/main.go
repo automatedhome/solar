@@ -44,6 +44,10 @@ var (
 		Name: "solar_tank_full_total",
 		Help: "Increase when heating stopped due to tank being full",
 	})
+	reducedModeMetric = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_reduced_mode",
+		Help: "Solar circut is operating in reduced mode",
+	})
 	flowRate = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "solar_flow_rate_volts",
 		Help: "Flow rate in volts",
@@ -304,6 +308,9 @@ func main() {
 	for {
 		time.Sleep(1 * time.Second)
 
+		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
+		controlDelta.Set(delta)
+
 		if failsafe(sensors.SolarUp.Value, settings.SolarCritical.Value) {
 			continue
 		}
@@ -312,8 +319,6 @@ func main() {
 			continue
 		}
 
-		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
-
 		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
 		// calculation need to be based on formula: (solar+out)/2 - in
 		if delta < 0 {
@@ -321,8 +326,6 @@ func main() {
 			heatescapeTotal.Inc()
 			continue
 		}
-
-		controlDelta.Set(delta)
 
 		if delta >= settings.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
@@ -342,11 +345,13 @@ func main() {
 					log.Println(err)
 				} else {
 					reducedMode = true
+					reducedModeMetric.Set(1)
 				}
 			}
 		} else {
 			// Delta SolarIn - SolarOut is too low.
 			reducedMode = false
+			reducedModeMetric.Set(0)
 			stop("In-Out delta too low.")
 		}
 	}

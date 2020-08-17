@@ -379,7 +379,7 @@ func main() {
 
 		if delta > settings.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta >= settings.SolarOn.Value {
+			if delta >= settings.SolarOn.Value && sensors.SolarUp.Value > sensors.SolarOut.Value {
 				start()
 			}
 			flow := calculateFlow(delta)

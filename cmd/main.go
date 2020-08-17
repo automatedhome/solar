@@ -162,10 +162,10 @@ func start() {
 			log.Println(err)
 			return
 		}
-		time.Sleep(1 * time.Second)
 
 		circuitRunning = true
 		circuitRunningMetric.Set(1)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -213,24 +213,6 @@ func setFlow(value float64) error {
 	}
 
 	return nil
-}
-
-func failsafe(solar float64, solarCritical float64) bool {
-	if solar >= solarCritical {
-		stop("Critical Solar Temperature reached")
-		failsafeTotal.Inc()
-		return true
-	}
-	return false
-}
-
-func tankfull(tank float64, max float64) bool {
-	if tank > max {
-		stop("Tank filled with hot water")
-		tankfullTotal.Inc()
-		return true
-	}
-	return false
 }
 
 func init() {
@@ -311,11 +293,15 @@ func main() {
 		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
 		controlDelta.Set(delta)
 
-		if failsafe(sensors.SolarUp.Value, settings.SolarCritical.Value) {
+		if sensors.SolarUp.Value >= settings.SolarCritical.Value {
+			stop("Critical Solar Temperature reached")
+			failsafeTotal.Inc()
 			continue
 		}
 
-		if tankfull(sensors.TankUp.Value, settings.TankMax.Value) {
+		if sensors.TankUp.Value > settings.TankMax.Value {
+			stop("Tank filled with hot water")
+			tankfullTotal.Inc()
 			continue
 		}
 

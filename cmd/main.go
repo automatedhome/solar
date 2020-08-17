@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -23,13 +24,14 @@ import (
 )
 
 var (
-	config         types.Config
-	settings       types.Settings
-	sensors        types.Sensors
-	actuators      types.Actuators
-	client         mqtt.Client
-	circuitRunning bool
-	invertFlow     bool
+	config             types.Config
+	settings           types.Settings
+	sensors            types.Sensors
+	actuators          types.Actuators
+	client             mqtt.Client
+	circuitRunning     bool
+	invertFlow         bool
+	internalConfigFile string
 )
 
 var (
@@ -80,20 +82,28 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 		sensors.TankUp.Value = value
 	case settings.SolarCritical.Address:
 		settings.SolarCritical.Value = value
+		dumpConfig()
 	case settings.SolarOn.Address:
 		settings.SolarOn.Value = value
+		dumpConfig()
 	case settings.SolarOff.Address:
 		settings.SolarOff.Value = value
+		dumpConfig()
 	case settings.TankMax.Address:
 		settings.TankMax.Value = value
+		dumpConfig()
 	case settings.Flow.DutyMin.Address:
 		settings.Flow.DutyMin.Value = value
+		dumpConfig()
 	case settings.Flow.DutyMax.Address:
 		settings.Flow.DutyMax.Value = value
+		dumpConfig()
 	case settings.Flow.TempMin.Address:
 		settings.Flow.TempMin.Value = value
+		dumpConfig()
 	case settings.Flow.TempMax.Address:
 		settings.Flow.TempMax.Value = value
+		dumpConfig()
 	}
 }
 
@@ -227,8 +237,25 @@ func httpConfig(w http.ResponseWriter, r *http.Request) {
 	w.Write(js)
 }
 
+func dumpConfig() {
+	var cfg types.Config
+	cfg.Sensors = sensors
+	cfg.Actuators = actuators
+	cfg.Settings = settings
+
+	d, err := yaml.Marshal(&cfg)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	err = ioutil.WriteFile(internalConfigFile, d, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func init() {
 	circuitRunning = false
+	internalConfigFile = "/tmp/config.yaml"
 
 	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
 	clientID := flag.String("clientid", "solar", "A clientid for the connection")
@@ -246,8 +273,15 @@ func init() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Reading configuration from %s", *configFile)
-	data, err := ioutil.ReadFile(*configFile)
+	var cfg string
+	if _, err := os.Stat(internalConfigFile); err == nil {
+		cfg = internalConfigFile
+	} else {
+		cfg = *configFile
+	}
+
+	log.Printf("Reading configuration from %s", cfg)
+	data, err := ioutil.ReadFile(cfg)
 	if err != nil {
 		log.Fatalf("File reading error: %v", err)
 		return
@@ -282,6 +316,7 @@ func init() {
 
 	// Wait for sensors data
 	waitForData(lockTemp)
+	dumpConfig()
 }
 
 func main() {

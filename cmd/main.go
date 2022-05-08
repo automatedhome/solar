@@ -243,7 +243,10 @@ func httpStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func httpConfig(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +257,10 @@ func httpConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func httpHealthCheck(w http.ResponseWriter, r *http.Request) {

@@ -7,53 +7,71 @@ builds:
 - env:
   - CGO_ENABLED=0
   main: ./cmd/
+  goos:
+  - linux
   goarch:
   - amd64
   - arm64
   - arm
+  goarm:
+  - 7
+
+snapshot:
+  # https://goreleaser.com/customization/snapshots/
+  name_template: "{{ incpatch .Version }}-dev-{{ .ShortCommit }}"
+
+source:
+  enabled: true
 
 dockers:
 - skip_push: false
-  dockerfile: ./Dockerfile
+  use: buildx
+  goos: linux
+  goarch: amd64
+  extra_files: [.git, go.sum, go.mod, pkg, cmd, config.yaml]
   build_flag_templates:
-  - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
   - "--label=org.opencontainers.image.name={{.ProjectName}}"
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
   - "--label=org.opencontainers.image.source={{.GitURL}}"
   - "--platform=linux/amd64"
-  extra_files: [.git, go.sum, go.mod, pkg, cmd]
   image_templates:
   - "automatedhome/{{.ProjectName}}:{{ .Version }}-amd64"
+  - "automatedhome/{{.ProjectName}}:master-amd64"
 
 - skip_push: false
-  dockerfile: ./Dockerfile
+  use: buildx
+  goos: linux
+  goarch: arm64
+  extra_files: [.git, go.sum, go.mod, pkg, cmd, config.yaml]
   build_flag_templates:
-  - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
   - "--label=org.opencontainers.image.name={{.ProjectName}}"
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
   - "--label=org.opencontainers.image.source={{.GitURL}}"
   - "--platform=linux/arm64"
-  extra_files: [.git, go.sum, go.mod, pkg, cmd]
   image_templates:
   - "automatedhome/{{.ProjectName}}:{{ .Version }}-arm64"
+  - "automatedhome/{{.ProjectName}}:master-arm64"
 
 - skip_push: false
-  dockerfile: ./Dockerfile
+  use: buildx
+  goos: linux
+  goarch: arm
+  goarm: 7
+  extra_files: [.git, go.sum, go.mod, pkg, cmd, config.yaml]
   build_flag_templates:
-  - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
   - "--label=org.opencontainers.image.name={{.ProjectName}}"
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
   - "--label=org.opencontainers.image.source={{.GitURL}}"
   - "--platform=linux/arm"
-  extra_files: [.git, go.sum, go.mod, pkg, cmd]
   image_templates:
   - "automatedhome/{{.ProjectName}}:{{ .Version }}-arm"
+  - "automatedhome/{{.ProjectName}}:master-arm"
 
 docker_manifests:
 - name_template: 'automatedhome/{{.ProjectName}}:{{ .Version }}'
@@ -61,3 +79,8 @@ docker_manifests:
   - 'automatedhome/{{.ProjectName}}:{{ .Version }}-amd64'
   - 'automatedhome/{{.ProjectName}}:{{ .Version }}-arm64'
   - 'automatedhome/{{.ProjectName}}:{{ .Version }}-arm'
+- name_template: 'automatedhome/{{.ProjectName}}:master'
+  image_templates:
+  - 'automatedhome/{{.ProjectName}}:master-amd64'
+  - 'automatedhome/{{.ProjectName}}:master-arm64'
+  - 'automatedhome/{{.ProjectName}}:master-arm'

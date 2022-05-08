@@ -2,7 +2,7 @@ FROM golang:1.18 as builder
  
 WORKDIR /go/src/github.com/automatedhome/solar
 COPY . .
-RUN make build
+RUN CGO_ENABLED=0 go build -o solar cmd/main.go
 
 FROM busybox:glibc
 

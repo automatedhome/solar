@@ -1,0 +1,63 @@
+# The documentation is at http://goreleaser.com
+# Release instructions
+# 1) git tag -a 0.1.0-alpha.1 -m "Release 0.1.0-alpha-1"
+# 2) goreleaser          //--skip-publish for dry-run
+
+builds:
+- env:
+  - CGO_ENABLED=0
+  main: ./cmd/
+  goarch:
+  - amd64
+  - arm64
+  - arm
+
+dockers:
+- skip_push: false
+  dockerfile: ./Dockerfile
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--platform=linux/amd64"
+  extra_files: [.git, go.sum, go.mod, pkg, cmd]
+  image_templates:
+  - "automatedhome/{{.ProjectName}}:{{ .Version }}-amd64"
+
+- skip_push: false
+  dockerfile: ./Dockerfile
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--platform=linux/arm64"
+  extra_files: [.git, go.sum, go.mod, pkg, cmd]
+  image_templates:
+  - "automatedhome/{{.ProjectName}}:{{ .Version }}-arm64"
+
+- skip_push: false
+  dockerfile: ./Dockerfile
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--platform=linux/arm"
+  extra_files: [.git, go.sum, go.mod, pkg, cmd]
+  image_templates:
+  - "automatedhome/{{.ProjectName}}:{{ .Version }}-arm"
+
+docker_manifests:
+- name_template: 'automatedhome/{{.ProjectName}}:{{ .Version }}'
+  image_templates:
+  - 'automatedhome/{{.ProjectName}}:{{ .Version }}-amd64'
+  - 'automatedhome/{{.ProjectName}}:{{ .Version }}-arm64'
+  - 'automatedhome/{{.ProjectName}}:{{ .Version }}-arm'

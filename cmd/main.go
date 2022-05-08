@@ -33,6 +33,7 @@ var (
 	invertFlow         bool
 	internalConfigFile string
 	lastPass           time.Time
+	systemStatus       types.Status
 )
 
 var (
@@ -227,6 +228,24 @@ func setFlow(value float64) error {
 	return nil
 }
 
+func setStatus(s string) {
+	systemStatus.Mode = s
+	systemStatus.Since = time.Now().Unix()
+	if err := mqttclient.Publish(client, "solar/status", 0, false, s); err != nil {
+		log.Println(err)
+	}
+}
+
+func httpStatus(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(systemStatus)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
 func httpConfig(w http.ResponseWriter, r *http.Request) {
 	js, err := json.Marshal(settings)
 	if err != nil {
@@ -322,6 +341,8 @@ func init() {
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
 	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
 
+	setStatus("startup")
+
 	stop("SYSTEM RESET")
 
 	// Wait for sensors data
@@ -337,6 +358,8 @@ func main() {
 		http.Handle("/metrics", promhttp.Handler())
 		// Expose config
 		http.HandleFunc("/config", httpConfig)
+		// Report current status
+		http.HandleFunc("/status", httpStatus)
 		// Expose healthcheck
 		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)
@@ -358,12 +381,14 @@ func main() {
 		controlDelta.Set(delta)
 
 		if sensors.SolarUp.Value >= settings.SolarCritical.Value {
+			setStatus("failsafe shutdown")
 			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", sensors.SolarUp.Value))
 			failsafeTotal.Inc()
 			continue
 		}
 
 		if sensors.TankUp.Value > settings.TankMax.Value {
+			setStatus("tank filled")
 			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", sensors.TankUp.Value))
 			tankfullTotal.Inc()
 			continue
@@ -372,6 +397,7 @@ func main() {
 		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
 		// calculation need to be based on formula: (solar+out)/2 - in
 		if delta < 0 {
+			setStatus("heat escape prevention mode")
 			stop(fmt.Sprintf("Heat escape prevention, delta: %f < 0", delta))
 			heatescapeTotal.Inc()
 			continue
@@ -380,6 +406,7 @@ func main() {
 		if delta > settings.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
 			if delta >= settings.SolarOn.Value && sensors.SolarUp.Value > sensors.SolarOut.Value {
+				setStatus("working")
 				start()
 			}
 			flow := calculateFlow(delta)
@@ -391,6 +418,7 @@ func main() {
 			// Reduced heat exchange. Set Flow to minimal value.
 			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode")
+				setStatus("reduced mode")
 				if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
 					log.Println(err)
 				} else {
@@ -402,6 +430,7 @@ func main() {
 			// Delta SolarIn - SolarOut is too low.
 			reducedMode = false
 			reducedModeMetric.Set(0)
+			setStatus("stopped")
 			stop(fmt.Sprintf("Temperature delta too low: %f", delta))
 		}
 	}

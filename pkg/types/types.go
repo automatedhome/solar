@@ -4,6 +4,11 @@ import (
 	common "github.com/automatedhome/common/pkg/types"
 )
 
+type Status struct {
+	Mode  string `json:"mode"`
+	Since int64  `json:"since"`
+}
+
 type Settings struct {
 	SolarCritical common.DataPoint `yaml:"solarCritical"`
 	SolarOn       common.DataPoint `yaml:"solarOn"`

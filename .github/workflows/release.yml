@@ -6,8 +6,6 @@ on:
     tags: ['*']
   pull_request:
     branches: ['**']
-  schedule:
-    - cron: '30 4 * * 5'
   workflow_dispatch:
 
 env:
@@ -42,22 +40,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: GoReleaser Release Nightly
-        uses: goreleaser/goreleaser-action@v2
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-        with:
-          distribution: goreleaser
-          version: ${{ env.goreleaser-version }}
-          args: release --nightly --rm-dist -f .goreleaser.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: GoReleaser Release
         uses: goreleaser/goreleaser-action@v2
-        if: github.event_name != 'pull_request' 
+        if: github.event_name != 'pull_request'
         with:
           distribution: goreleaser
           version: ${{ env.goreleaser-version }}
           args: release --rm-dist -f .goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push development images
+        if: startsWith(github.ref, 'refs/tags/') != true
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ env.GITHUB_REPOSITORY }}:master

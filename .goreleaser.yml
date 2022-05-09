@@ -20,9 +20,6 @@ snapshot:
   # https://goreleaser.com/customization/snapshots/
   name_template: "{{ incpatch .Version }}-dev-{{ .ShortCommit }}"
 
-nightly:
-  name_template: '{{ incpatch .Version }}-dev-{{ .ShortCommit }}'
-
 source:
   enabled: true
 

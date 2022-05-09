@@ -6,6 +6,9 @@ on:
     tags: ['*']
   pull_request:
     branches: ['**']
+  schedule:
+    - cron: '30 4 * * 5'
+  workflow_dispatch:
 
 env:
   golang-version: 1.18.0
@@ -31,13 +34,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Run GoReleaser Snapshot Test
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          distribution: goreleaser
-          version: ${{ env.goreleaser-version }}
-          args: release --snapshot --skip-publish --rm-dist -f .goreleaser.yml
-
       # Actions from this point are happening only on repository branches (not on PRs)
       - name: Login to Docker Hub
         uses: docker/login-action@v1
@@ -46,9 +42,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: GoReleaser Release Nightly
+        uses: goreleaser/goreleaser-action@v2
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        with:
+          distribution: goreleaser
+          version: ${{ env.goreleaser-version }}
+          args: release --nightly --rm-dist -f .goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: GoReleaser Release
         uses: goreleaser/goreleaser-action@v2
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' 
         with:
           distribution: goreleaser
           version: ${{ env.goreleaser-version }}

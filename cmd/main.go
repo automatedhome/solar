@@ -65,6 +65,14 @@ var (
 		Name: "solar_temperature_delta_celsius",
 		Help: "Temperature delta used for setting flow rate",
 	})
+	solarPanelVoltage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_panel_voltage_volts",
+		Help: "Voltage reported by solar panel temperature sensor",
+	})
+	solarPanelTemperature = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "solar_panel_temperature_celsius",
+		Help: "Temperature of solar panel",
+	})
 )
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -76,6 +84,8 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 	switch message.Topic() {
 	case sensors.SolarUp.Address:
 		sensors.SolarUp.Value = value
+		solarPanelTemperature.Set(value)
+		solarPanelVoltage.Set(-1)
 	case sensors.SolarIn.Address:
 		sensors.SolarIn.Value = value
 	case sensors.SolarOut.Address:
@@ -249,6 +259,30 @@ func httpStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func httpSolarPanelSensor(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Name        string  `json:"name"`
+		Temperature float64 `json:"temperature"`
+		Voltage     float64 `json:"voltage"`
+	}{
+		Name:        "solarUp",
+		Temperature: sensors.SolarUp.Value,
+		Voltage:     -1,
+	}
+
+	js, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
 func httpConfig(w http.ResponseWriter, r *http.Request) {
 	js, err := json.Marshal(settings)
 	if err != nil {
@@ -366,6 +400,8 @@ func main() {
 		http.HandleFunc("/config", httpConfig)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
+		// Report solar panel sensor data // TODO: Rewrite to use generic funtion for all sensors
+		http.HandleFunc("/sensors/panel", httpSolarPanelSensor)
 		// Expose healthcheck
 		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)

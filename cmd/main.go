@@ -82,7 +82,7 @@ var (
 func handleWebsocketMessage(address string) {
 	fmt.Printf("Connecting to EVOK at %s\n", address)
 
-	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "http://"+evokAddress+"/ws")
+	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "ws://"+evokAddress+"/ws")
 	if err != nil {
 		panic("Connecting to EVOK failed: " + err.Error())
 	}

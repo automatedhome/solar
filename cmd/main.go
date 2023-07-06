@@ -105,7 +105,7 @@ func handleWebsocketMessage(address string) {
 			log.Printf("Could not parse received data: %#v", err)
 		}
 
-		log.Printf("Received data: %#v\n Parsed as: %#v", payload, inputs) //FIXME: Remove this after debugging
+		log.Printf("Received data: %#v\n Parsed as: %#v", string(payload[:]), inputs) //FIXME: Remove this after debugging
 
 		parseEvokData(inputs)
 	}
@@ -139,29 +139,29 @@ func parseEvokData(data []types.EvokDevice) {
 	}
 }
 
-func getSingleEvokValue(dev, circuit string) float64 {
+func getSingleEvokValue(dev, circuit string) (float64, error) {
 	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
 
 	resp, err := http.Get(address)
 	if err != nil {
 		log.Printf("Could not get data from EVOK: %#v", err)
-		return 0
+		return 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Could not read response body: %#v", err)
-		return 0
+		return 0, err
 	}
 
 	var data types.EvokDevice
 	if err := json.Unmarshal(body, &data); err != nil {
 		log.Printf("Could not parse received data: %#v", err)
-		return 0
+		return 0, err
 	}
 
-	return data.Value
+	return data.Value, nil
 }
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -419,10 +419,22 @@ func init() {
 	sensors = config.Sensors
 
 	// initialize sensors
-	sensors.SolarUp.Value = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
-	sensors.SolarIn.Value = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
-	sensors.SolarOut.Value = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
-	sensors.TankUp.Value = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
+	sensors.SolarUp.Value, err = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.SolarIn.Value, err = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.SolarOut.Value, err = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.TankUp.Value, err = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 
 	// subscribe to configuration-related topics
 	var topics []string

@@ -90,7 +90,7 @@ func handleWebsocketMessage(address string) {
 	defer conn.Close()
 
 	//msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"sensor\"]}"
-	msg := "{\"cmd\":\"full\"}" // FIXME: This is a temporary hack to get all data from EVOK
+	msg := "{\"cmd\":\"all\"}" // FIXME: This is a temporary hack to get all data from EVOK
 	if err = wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
 		panic("Sending websocket message to EVOK failed: " + err.Error())
 	}

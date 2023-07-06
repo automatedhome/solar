@@ -1,6 +1,8 @@
 package types
 
 import (
+	"sync"
+
 	common "github.com/automatedhome/common/pkg/types"
 )
 
@@ -27,6 +29,7 @@ type Sensors struct {
 	SolarIn  common.DataPoint `yaml:"solarIn"`
 	SolarOut common.DataPoint `yaml:"solarOut"`
 	TankUp   common.DataPoint `yaml:"tankUp"`
+	Mutex    sync.Mutex
 }
 
 type Actuators struct {
@@ -40,4 +43,10 @@ type Config struct {
 	Actuators Actuators `yaml:"actuators"`
 	Sensors   Sensors   `yaml:"sensors"`
 	Settings  Settings  `yaml:"settings"`
+}
+
+type EvokMessage struct {
+	Value   float64 `json:"value"`
+	Circuit string  `json:"circuit"`
+	Dev     string  `json:"dev"`
 }

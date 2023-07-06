@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,6 +19,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v2"
 
+	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/wsutil"
+
 	mqttclient "github.com/automatedhome/common/pkg/mqttclient"
 	types "github.com/automatedhome/solar/pkg/types"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -34,6 +38,7 @@ var (
 	internalConfigFile string
 	lastPass           time.Time
 	systemStatus       types.Status
+	evokAddress        string
 )
 
 var (
@@ -75,6 +80,73 @@ var (
 	})
 )
 
+func handleWebsocketMessage(address string) {
+	fmt.Printf("Connecting to EVOK at %s\n", address)
+
+	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), evokAddress)
+	if err != nil {
+		panic("Connecting to EVOK failed: " + err.Error())
+	}
+	defer conn.Close()
+
+	msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"sensor\"]}"
+	if err = wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
+		panic("Sending websocket message to EVOK failed: " + err.Error())
+	}
+
+	var inputs []types.EvokMessage
+	for {
+		payload, err := wsutil.ReadServerText(conn)
+		if err != nil {
+			log.Printf("Received incorrect data: %#v", err)
+		}
+
+		if err := json.Unmarshal(payload, &inputs); err != nil {
+			log.Printf("Could not parse received data: %#v", err)
+		}
+
+		log.Printf("Received data: %#v", inputs)
+
+		// create mutex to lock access to sensors
+		sensors.Mutex.Lock()
+
+		parseEvokData(inputs)
+
+		sensors.Mutex.Unlock()
+	}
+}
+
+func parseEvokData(data []types.EvokMessage) {
+	for _, msg := range data {
+		if msg.Circuit == "1" && msg.Dev == "ai" {
+			temp := calculateTemperature(msg.Value)
+			sensors.SolarUp.Value = temp
+			solarPanelTemperature.Set(temp)
+			solarPanelVoltage.Set(msg.Value)
+			continue
+		}
+
+		if msg.Dev != "sensor" {
+			continue
+		}
+
+		switch msg.Circuit {
+		//case sensors.SolarIn.Address:
+		case "28FF1A181515019F":
+			//sensors.SolarIn.Value = msg.Value
+			log.Printf("SolarIn: %v", msg.Value)
+		//case sensors.SolarOut.Address:
+		case "28FF0A9171150270":
+			//sensors.SolarOut.Value = msg.Value
+			log.Printf("SolarOut: %v", msg.Value)
+		//case sensors.TankUp.Address:
+		case "28FF4C30041503A7":
+			//sensors.TankUp.Value = msg.Value
+			log.Printf("TankUp: %v", msg.Value)
+		}
+	}
+}
+
 func onMessage(client mqtt.Client, message mqtt.Message) {
 	value, err := strconv.ParseFloat(string(message.Payload()), 64)
 	if err != nil {
@@ -82,10 +154,8 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 		return
 	}
 	switch message.Topic() {
-	case sensors.SolarUp.Address:
-		sensors.SolarUp.Value = value
-		solarPanelTemperature.Set(value)
-		solarPanelVoltage.Set(-1)
+	//case sensors.SolarUp.Address:
+	//	sensors.SolarUp.Value = value
 	case sensors.SolarIn.Address:
 		sensors.SolarIn.Value = value
 	case sensors.SolarOut.Address:
@@ -190,6 +260,12 @@ func start() {
 		circuitRunningMetric.Set(1)
 		time.Sleep(1 * time.Second)
 	}
+}
+
+func calculateTemperature(voltage float64) float64 {
+	// volts * (Tmax - Tmin) / Vref + Tmin
+	// volts * (200 - 0) / 12 + 0
+	return voltage*(200-0)/12 + 0
 }
 
 // flow can range from 0 to 10.
@@ -330,7 +406,10 @@ func init() {
 	clientID := flag.String("clientid", "solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
 	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
+	addr := flag.String("evok-address", "ws://localhost:8080/ws", "EVOK websocket API address (default: ws://localhost:8080/ws)")
 	flag.Parse()
+
+	evokAddress = *addr
 
 	invertFlow = *invert
 	if invertFlow {
@@ -409,6 +488,8 @@ func main() {
 			panic("HTTP Server for metrics exposition failed: " + err.Error())
 		}
 	}()
+
+	go handleWebsocketMessage(evokAddress)
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute

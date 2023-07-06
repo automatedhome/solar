@@ -107,12 +107,7 @@ func handleWebsocketMessage(address string) {
 
 		log.Printf("Received data: %#v", inputs)
 
-		// create mutex to lock access to sensors
-		sensors.Mutex.Lock()
-
 		parseEvokData(inputs)
-
-		sensors.Mutex.Unlock()
 	}
 }
 
@@ -464,11 +459,6 @@ func init() {
 
 	stop("SYSTEM RESET")
 
-	// Wait for sensors data
-	waitForData(lockTemp)
-
-	// Write config file
-	dumpConfig()
 }
 
 func main() {
@@ -490,6 +480,12 @@ func main() {
 	}()
 
 	go handleWebsocketMessage(evokAddress)
+
+	// Wait for sensors data
+	waitForData(300.0)
+
+	// Write config file
+	dumpConfig()
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute

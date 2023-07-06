@@ -1,8 +1,6 @@
 package types
 
 import (
-	"sync"
-
 	common "github.com/automatedhome/common/pkg/types"
 )
 
@@ -29,7 +27,6 @@ type Sensors struct {
 	SolarIn  common.DataPoint `yaml:"solarIn"`
 	SolarOut common.DataPoint `yaml:"solarOut"`
 	TankUp   common.DataPoint `yaml:"tankUp"`
-	Mutex    sync.Mutex
 }
 
 type Actuators struct {

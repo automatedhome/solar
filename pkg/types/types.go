@@ -23,10 +23,10 @@ type Settings struct {
 }
 
 type Sensors struct {
-	SolarUp  common.DataPoint `yaml:"solarUp"`
-	SolarIn  common.DataPoint `yaml:"solarIn"`
-	SolarOut common.DataPoint `yaml:"solarOut"`
-	TankUp   common.DataPoint `yaml:"tankUp"`
+	SolarUp  EvokDevice `yaml:"solarUp"`
+	SolarIn  EvokDevice `yaml:"solarIn"`
+	SolarOut EvokDevice `yaml:"solarOut"`
+	TankUp   EvokDevice `yaml:"tankUp"`
 }
 
 type Actuators struct {
@@ -42,8 +42,8 @@ type Config struct {
 	Settings  Settings  `yaml:"settings"`
 }
 
-type EvokMessage struct {
-	Value   float64 `json:"value"`
+type EvokDevice struct {
+	Value   float64 `json:"value,omitempty"`
 	Circuit string  `json:"circuit"`
 	Dev     string  `json:"dev"`
 }

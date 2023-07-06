@@ -5,14 +5,18 @@ actuators:
   switch: "evok/relay/2/set"
   flow: "evok/ao/1/set"
 sensors:
-  solarIn:
-    address: "solar/temperature/in"
-  solarOut:
-    address: "solar/temperature/out"
   solarUp:
-    address: "solar/temperature/up"
+    dev: "ai"
+    circuit: "1"
+  solarIn:
+    dev: "sensor"
+    circuit: "28FFABCDEFFEDCBA"
+  solarOut:
+    dev: "sensor"
+    circuit: "28FFABCDEFFEDCBA"
   tankUp:
-    address: "tank/temperature/up"
+    dev: "sensor"
+    circuit: "28FFABCDEFFEDCBA"
 settings:
   solarCritical:
     address: "solar/settings/critical"

@@ -89,12 +89,13 @@ func handleWebsocketMessage(address string) {
 	}
 	defer conn.Close()
 
-	msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"sensor\"]}"
+	//msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"sensor\"]}"
+	msg := "{\"cmd\":\"full\"}" // FIXME: This is a temporary hack to get all data from EVOK
 	if err = wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
 		panic("Sending websocket message to EVOK failed: " + err.Error())
 	}
 
-	var inputs []types.EvokMessage
+	var inputs []types.EvokDevice
 	for {
 		payload, err := wsutil.ReadServerText(conn)
 		if err != nil {
@@ -111,9 +112,9 @@ func handleWebsocketMessage(address string) {
 	}
 }
 
-func parseEvokData(data []types.EvokMessage) {
+func parseEvokData(data []types.EvokDevice) {
 	for _, msg := range data {
-		if msg.Circuit == "1" && msg.Dev == "ai" {
+		if msg.Circuit == sensors.SolarUp.Circuit && msg.Dev == sensors.SolarUp.Dev {
 			temp := calculateTemperature(msg.Value)
 			sensors.SolarUp.Value = temp
 			solarPanelTemperature.Set(temp)
@@ -121,22 +122,19 @@ func parseEvokData(data []types.EvokMessage) {
 			continue
 		}
 
-		if msg.Dev != "sensor" {
+		/*if msg.Dev != "sensor" {
 			continue
-		}
+		}*/
 
 		switch msg.Circuit {
-		//case sensors.SolarIn.Address:
-		case "28FF1A181515019F":
-			//sensors.SolarIn.Value = msg.Value
+		case sensors.SolarIn.Circuit:
+			sensors.SolarIn.Value = msg.Value
 			log.Printf("SolarIn: %v", msg.Value)
-		//case sensors.SolarOut.Address:
-		case "28FF0A9171150270":
-			//sensors.SolarOut.Value = msg.Value
+		case sensors.SolarOut.Circuit:
+			sensors.SolarOut.Value = msg.Value
 			log.Printf("SolarOut: %v", msg.Value)
-		//case sensors.TankUp.Address:
-		case "28FF4C30041503A7":
-			//sensors.TankUp.Value = msg.Value
+		case sensors.TankUp.Circuit:
+			sensors.TankUp.Value = msg.Value
 			log.Printf("TankUp: %v", msg.Value)
 		}
 	}
@@ -149,14 +147,6 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 		return
 	}
 	switch message.Topic() {
-	//case sensors.SolarUp.Address:
-	//	sensors.SolarUp.Value = value
-	case sensors.SolarIn.Address:
-		sensors.SolarIn.Value = value
-	case sensors.SolarOut.Address:
-		sensors.SolarOut.Value = value
-	case sensors.TankUp.Address:
-		sensors.TankUp.Value = value
 	case settings.SolarCritical.Address:
 		settings.SolarCritical.Value = value
 		dumpConfig()
@@ -447,9 +437,8 @@ func init() {
 	sensors.SolarOut.Value = lockTemp
 	sensors.TankUp.Value = lockTemp
 
-	// subscribe to topics
+	// subscribe to configuration-related topics
 	var topics []string
-	topics = append(topics, sensors.SolarIn.Address, sensors.SolarOut.Address, sensors.SolarUp.Address, sensors.TankUp.Address)
 	topics = append(topics, settings.SolarCritical.Address, settings.SolarOn.Address, settings.SolarOff.Address, settings.TankMax.Address)
 	topics = append(topics, settings.Flow.TempMin.Address, settings.Flow.TempMax.Address, settings.Flow.DutyMin.Address, settings.Flow.DutyMax.Address)
 	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)

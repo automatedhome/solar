@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -189,31 +188,6 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 	case settings.Flow.TempMax.Address:
 		settings.Flow.TempMax.Value = value
 	}
-}
-
-func waitForData(lockValue float64) {
-	// Wait for sensors data
-	for {
-		if sensors.SolarIn.Value != lockValue && sensors.SolarOut.Value != lockValue && sensors.SolarUp.Value != lockValue && sensors.TankUp.Value != lockValue {
-			break
-		}
-		msg := []string{"Waiting 30s for sensors data. Currently lacking:"}
-		if sensors.SolarIn.Value == 300 {
-			msg = append(msg, "solarIn")
-		}
-		if sensors.SolarOut.Value == 300 {
-			msg = append(msg, "solarOut")
-		}
-		if sensors.SolarUp.Value == 300 {
-			msg = append(msg, "solarUp")
-		}
-		if sensors.TankUp.Value == 300 {
-			msg = append(msg, "tankUp")
-		}
-		log.Println(strings.Join(msg, " "))
-		time.Sleep(30 * time.Second)
-	}
-	log.Printf("Starting with sensors data received: %+v\n", sensors)
 }
 
 func stop(reason string) {

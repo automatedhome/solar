@@ -89,8 +89,8 @@ func handleWebsocketMessage(address string) {
 	}
 	defer conn.Close()
 
-	//msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"sensor\"]}"
-	msg := "{\"cmd\":\"all\"}" // FIXME: This is a temporary hack to get all data from EVOK
+	msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"temp\"]}"
+	//msg := "{\"cmd\":\"all\"}" // FIXME: This is a temporary hack to get all data from EVOK
 	if err = wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
 		panic("Sending websocket message to EVOK failed: " + err.Error())
 	}
@@ -106,7 +106,7 @@ func handleWebsocketMessage(address string) {
 			log.Printf("Could not parse received data: %#v", err)
 		}
 
-		log.Printf("Received data: %#v", inputs)
+		log.Printf("Received data: %#v", inputs) //FIXME: Remove this after debugging
 
 		parseEvokData(inputs)
 	}
@@ -122,9 +122,9 @@ func parseEvokData(data []types.EvokDevice) {
 			continue
 		}
 
-		/*if msg.Dev != "sensor" {
+		if msg.Dev != "temp" {
 			continue
-		}*/
+		}
 
 		switch msg.Circuit {
 		case sensors.SolarIn.Circuit:
@@ -344,6 +344,20 @@ func httpSolarPanelSensor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func httpSensors(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(sensors)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
 func httpConfig(w http.ResponseWriter, r *http.Request) {
 	js, err := json.Marshal(settings)
 	if err != nil {
@@ -460,6 +474,8 @@ func main() {
 		http.HandleFunc("/status", httpStatus)
 		// Report solar panel sensor data // TODO: Rewrite to use generic funtion for all sensors
 		http.HandleFunc("/sensors/panel", httpSolarPanelSensor)
+		// Expose current sensors data
+		http.HandleFunc("/sensors", httpSensors)
 		// Expose healthcheck
 		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)

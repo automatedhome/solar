@@ -9,13 +9,13 @@ sensors:
     dev: "ai"
     circuit: "1"
   solarIn:
-    dev: "sensor"
+    dev: "temp"
     circuit: "28FFABCDEFFEDCBA"
   solarOut:
-    dev: "sensor"
+    dev: "temp"
     circuit: "28FFABCDEFFEDCBA"
   tankUp:
-    dev: "sensor"
+    dev: "temp"
     circuit: "28FFABCDEFFEDCBA"
 settings:
   solarCritical:

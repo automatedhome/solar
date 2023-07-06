@@ -83,7 +83,7 @@ var (
 func handleWebsocketMessage(address string) {
 	fmt.Printf("Connecting to EVOK at %s\n", address)
 
-	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), evokAddress)
+	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "http://"+evokAddress+"/ws")
 	if err != nil {
 		panic("Connecting to EVOK failed: " + err.Error())
 	}
@@ -106,7 +106,7 @@ func handleWebsocketMessage(address string) {
 			log.Printf("Could not parse received data: %#v", err)
 		}
 
-		log.Printf("Received data: %#v", inputs) //FIXME: Remove this after debugging
+		log.Printf("Received data: %#v\n Parsed as: %#v", payload, inputs) //FIXME: Remove this after debugging
 
 		parseEvokData(inputs)
 	}
@@ -140,6 +140,31 @@ func parseEvokData(data []types.EvokDevice) {
 	}
 }
 
+func getSingleEvokValue(dev, circuit string) float64 {
+	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
+
+	resp, err := http.Get(address)
+	if err != nil {
+		log.Printf("Could not get data from EVOK: %#v", err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Could not read response body: %#v", err)
+		return 0
+	}
+
+	var data types.EvokDevice
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Printf("Could not parse received data: %#v", err)
+		return 0
+	}
+
+	return data.Value
+}
+
 func onMessage(client mqtt.Client, message mqtt.Message) {
 	value, err := strconv.ParseFloat(string(message.Payload()), 64)
 	if err != nil {
@@ -149,28 +174,20 @@ func onMessage(client mqtt.Client, message mqtt.Message) {
 	switch message.Topic() {
 	case settings.SolarCritical.Address:
 		settings.SolarCritical.Value = value
-		dumpConfig()
 	case settings.SolarOn.Address:
 		settings.SolarOn.Value = value
-		dumpConfig()
 	case settings.SolarOff.Address:
 		settings.SolarOff.Value = value
-		dumpConfig()
 	case settings.TankMax.Address:
 		settings.TankMax.Value = value
-		dumpConfig()
 	case settings.Flow.DutyMin.Address:
 		settings.Flow.DutyMin.Value = value
-		dumpConfig()
 	case settings.Flow.DutyMax.Address:
 		settings.Flow.DutyMax.Value = value
-		dumpConfig()
 	case settings.Flow.TempMin.Address:
 		settings.Flow.TempMin.Value = value
-		dumpConfig()
 	case settings.Flow.TempMax.Address:
 		settings.Flow.TempMax.Value = value
-		dumpConfig()
 	}
 }
 
@@ -381,22 +398,6 @@ func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func dumpConfig() {
-	var cfg types.Config
-	cfg.Sensors = sensors
-	cfg.Actuators = actuators
-	cfg.Settings = settings
-
-	d, err := yaml.Marshal(&cfg)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	err = ioutil.WriteFile(internalConfigFile, d, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 func init() {
 	circuitRunning = false
 	internalConfigFile = "/tmp/config.yaml"
@@ -405,7 +406,7 @@ func init() {
 	clientID := flag.String("clientid", "solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
 	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
-	addr := flag.String("evok-address", "ws://localhost:8080/ws", "EVOK websocket API address (default: ws://localhost:8080/ws)")
+	addr := flag.String("evok-address", "localhost:8080", "EVOK API address (default: localhost:8080)")
 	flag.Parse()
 
 	evokAddress = *addr
@@ -443,13 +444,11 @@ func init() {
 	actuators = config.Actuators
 	sensors = config.Sensors
 
-	// set initial sensors values and ignore ones provided by config file
-	// this is used as a locking mechanism to prevent starting control loop without current sensors data
-	lockTemp := 300.0
-	sensors.SolarUp.Value = lockTemp
-	sensors.SolarIn.Value = lockTemp
-	sensors.SolarOut.Value = lockTemp
-	sensors.TankUp.Value = lockTemp
+	// initialize sensors
+	sensors.SolarUp.Value = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
+	sensors.SolarIn.Value = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
+	sensors.SolarOut.Value = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
+	sensors.TankUp.Value = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
 
 	// subscribe to configuration-related topics
 	var topics []string
@@ -485,12 +484,6 @@ func main() {
 	}()
 
 	go handleWebsocketMessage(evokAddress)
-
-	// Wait for sensors data
-	waitForData(300.0)
-
-	// Write config file
-	dumpConfig()
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute

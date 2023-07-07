@@ -161,11 +161,18 @@ func getSingleEvokValue(dev, circuit string) (float64, error) {
 func setEvokSingleValue(dev, circuit string, value float64) error {
 	address := fmt.Sprintf("http://%s/json/%s/%s", evokAddress, dev, circuit)
 
+	stringValue := "0"
+	if dev == "ao" {
+		stringValue = fmt.Sprintf("%.2f", value)
+	} else {
+		stringValue = fmt.Sprintf("%.0f", value)
+	}
+
 	jsonValue, _ := json.Marshal(
 		struct {
-			Value float64 `json:"value"`
+			Value string `json:"value"`
 		}{
-			value,
+			stringValue,
 		},
 	)
 

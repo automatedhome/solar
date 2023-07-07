@@ -78,11 +78,11 @@ func (c *Client) ExposeSensorsOnHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) HandleWebsocketConnection() {
-	fmt.Printf("Connecting to EVOK at %s\n", c.wsAddress)
+	log.Printf("Connecting to EVOK at %s\n", c.wsAddress)
 
 	err := c.establishWebsocketConnection()
 	if err != nil {
-		panic(fmt.Sprintf("Connecting to EVOK failed: %v", err))
+		log.Fatalf("Connecting to EVOK failed: %v", err)
 	}
 	defer c.wsConn.Close()
 

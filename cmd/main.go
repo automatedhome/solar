@@ -247,7 +247,7 @@ func init() {
 	}
 
 	// Set EVOK address and entities configuration
-	evokClient := evok.NewClient(*eaddr, *configClient.GetSensorsConfig(), *configClient.GetActuatorsConfig())
+	evokClient = evok.NewClient(*eaddr, *configClient.GetSensorsConfig(), *configClient.GetActuatorsConfig())
 
 	// Initialize sensors values
 	err = evokClient.InitializeSensorsValues()

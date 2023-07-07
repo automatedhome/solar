@@ -30,9 +30,9 @@ type Sensors struct {
 }
 
 type Actuators struct {
-	Pump string `yaml:"pump"`
-	Sw   string `yaml:"switch"`
-	Flow string `yaml:"flow"`
+	Pump   EvokDevice `yaml:"pump"`
+	Switch EvokDevice `yaml:"switch"`
+	Flow   EvokDevice `yaml:"flow"`
 }
 
 type Config struct {
@@ -47,3 +47,11 @@ type EvokDevice struct {
 	Circuit string  `json:"circuit"`
 	Dev     string  `json:"dev"`
 }
+
+/*
+type HomeAssistantEntity struct {
+	Name     string `json:"name"`
+	UniqueId string `json:"unique_id"`
+	State    string `json:"state"`
+}
+*/

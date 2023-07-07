@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -38,6 +39,8 @@ var (
 	lastPass           time.Time
 	systemStatus       types.Status
 	evokAddress        string
+	//homeAssistantAddress string
+	//homeAssistantToken   string
 )
 
 var (
@@ -139,6 +142,41 @@ func parseEvokData(data []types.EvokDevice) {
 	}
 }
 
+/*func getSingleHomeAssistantValue(entity string) (string, error) {
+	address := fmt.Sprintf("http://%s/api/states/%s", homeAssistantAddress, entity)
+	authToken := fmt.Sprintf("Bearer %s", homeAssistantToken)
+
+	req, err := http.NewRequest("GET", address, nil)
+	if err != nil {
+		log.Printf("Could not create request: %#v", err)
+		return "", err
+	}
+
+	req.Header.Add("Authorization", authToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("Could not get data from Home Assistant: %#v", err)
+		return "", err
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Could not read response body: %#v", err)
+		return "", err
+	}
+
+	var data types.HomeAssistantEntity
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Printf("Could not parse received data: %#v", err)
+		return "", err
+	}
+
+	return data.State, nil
+}*/
+
 func getSingleEvokValue(dev, circuit string) (float64, error) {
 	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
 
@@ -162,6 +200,36 @@ func getSingleEvokValue(dev, circuit string) (float64, error) {
 	}
 
 	return data.Value, nil
+}
+
+func setEvokSingleValue(dev, circuit string, value float64) error {
+	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
+
+	jsonValue, _ := json.Marshal(
+		struct {
+			Value float64 `json:"value"`
+		}{
+			value,
+		},
+	)
+
+	req, err := http.NewRequest("POST", address, bytes.NewBuffer(jsonValue))
+	if err != nil {
+		log.Printf("Could not create request: %#v", err)
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("Could not set circuit state in EVOK: %#v", err)
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return nil
 }
 
 func onMessage(client mqtt.Client, message mqtt.Message) {
@@ -194,13 +262,13 @@ func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "0"); err != nil {
+		if err := setEvokSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "0"); err != nil {
+		if err := setEvokSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
@@ -221,13 +289,13 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := mqttclient.Publish(client, actuators.Pump, 0, false, "1"); err != nil {
+		if err := setEvokSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := mqttclient.Publish(client, actuators.Sw, 0, false, "1"); err != nil {
+		if err := setEvokSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -281,11 +349,13 @@ func setFlow(value float64) error {
 	if invertFlow {
 		value = 10.0 - value
 	}
-	err := mqttclient.Publish(client, actuators.Flow, 0, false, fmt.Sprintf("%.1f", value))
-	flowRate.Set(value)
-	if err != nil {
+
+	if err := setEvokSingleValue(actuators.Flow.Dev, actuators.Flow.Circuit, value); err != nil {
+		log.Println(err)
 		return err
 	}
+
+	flowRate.Set(value)
 
 	return nil
 }

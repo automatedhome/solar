@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -220,10 +221,17 @@ func getSingleHomeAssistantValue(entity string) (float64, error) {
 		return -1, err
 	}
 
+	// Convert string value to float64
+	data.Value, err = strconv.ParseFloat(data.State, 64)
+	if err != nil {
+		log.Printf("Could not convert value to float64: %#v", err)
+		return -1, err
+	}
+
 	return data.Value, nil
 }
 
-func getSettings() {
+func getSettings() error {
 	var err error
 	settings.SolarCritical.Value, err = getSingleHomeAssistantValue(settings.SolarCritical.EntityID)
 	if err != nil {
@@ -258,6 +266,8 @@ func getSettings() {
 	if err != nil {
 		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
 	}
+
+	return err
 }
 
 func getSensorValues() {
@@ -506,7 +516,10 @@ func init() {
 	sensors = config.Sensors
 
 	// get configuration values
-	getSettings()
+	err = getSettings()
+	if err != nil {
+		log.Fatalf("Error getting settings: %v", err)
+	}
 
 	// initialize sensors
 	getSensorValues()

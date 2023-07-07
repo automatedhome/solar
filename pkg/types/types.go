@@ -46,5 +46,6 @@ type EvokDevice struct {
 
 type HomeAssistantEntity struct {
 	EntityID string  `json:"entity_id" yaml:"entity_id"`
-	Value    float64 `json:"state,omitempty" yaml:"state,omitempty"`
+	State    string  `json:"state,omitempty" yaml:"state,omitempty"`
+	Value    float64 `json:"value,omitempty" yaml:"value,omitempty"`
 }

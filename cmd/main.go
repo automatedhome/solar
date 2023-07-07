@@ -17,8 +17,9 @@ import (
 )
 
 type Status struct {
-	Mode  string `json:"mode"`
-	Since int64  `json:"since"`
+	Mode  string  `json:"mode"`
+	Since int64   `json:"since"`
+	Delta float64 `json:"delta"`
 }
 
 var (
@@ -309,6 +310,7 @@ func main() {
 		cfg := hass.GetSettings()
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
+		systemStatus.Delta = delta
 		promMetrics.controlDelta.Set(delta)
 
 		if s.SolarUp.Value >= cfg.SolarCritical.Value {

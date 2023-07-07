@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -13,15 +12,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"gopkg.in/yaml.v2"
 
+	"github.com/automatedhome/solar/pkg/config"
 	"github.com/automatedhome/solar/pkg/evok"
 	"github.com/automatedhome/solar/pkg/homeassistant"
+
 	types "github.com/automatedhome/solar/pkg/types"
 )
 
 var (
-	config             types.Config
 	settings           types.Settings
 	sensors            types.Sensors
 	actuators          types.Actuators
@@ -30,9 +29,9 @@ var (
 	internalConfigFile string
 	lastPass           time.Time
 	systemStatus       types.Status
-)
 
-var httpClient = &http.Client{}
+	hassClient *homeassistant.Client
+)
 
 var (
 	heatescapeTotal = promauto.NewCounter(prometheus.CounterOpts{
@@ -64,59 +63,6 @@ var (
 		Help: "Temperature delta used for setting flow rate",
 	})
 )
-
-func getSettings() error {
-	var errs []error
-	var err error
-
-	settings.SolarCritical.Value, err = homeassistant.GetSingleValue(settings.SolarCritical.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for solar critical temperature from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.SolarOn.Value, err = homeassistant.GetSingleValue(settings.SolarOn.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for solar on temperature from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.SolarOff.Value, err = homeassistant.GetSingleValue(settings.SolarOff.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for solar off temperature from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.TankMax.Value, err = homeassistant.GetSingleValue(settings.TankMax.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for tank max temperature from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-
-	settings.Flow.DutyMin.Value, err = homeassistant.GetSingleValue(settings.Flow.DutyMin.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for flow duty min from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.Flow.DutyMax.Value, err = homeassistant.GetSingleValue(settings.Flow.DutyMax.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for flow duty max from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.Flow.TempMin.Value, err = homeassistant.GetSingleValue(settings.Flow.TempMin.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for flow temp min from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-	settings.Flow.TempMax.Value, err = homeassistant.GetSingleValue(settings.Flow.TempMax.EntityID)
-	if err != nil {
-		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("encountered %d error(s) while fetching settings", len(errs))
-	}
-
-	return nil
-}
 
 func stop(reason string) {
 	if circuitRunning {
@@ -246,20 +192,6 @@ func httpSensors(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func httpConfig(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(settings)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, err = w.Write(js)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
 func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 	timeout := time.Duration(1 * time.Minute)
 	if lastPass.Add(timeout).After(time.Now()) {
@@ -284,8 +216,7 @@ func init() {
 	evok.SetAddress(*eaddr)
 
 	// Set Home Assistant address and token
-	homeassistant.SetAddress(*haddr)
-	homeassistant.SetToken(*htoken)
+	hassClient = homeassistant.NewClient(*haddr, *htoken)
 
 	invertFlow = *invert
 	if invertFlow {
@@ -299,29 +230,20 @@ func init() {
 		cfg = *configFile
 	}
 
-	log.Printf("Reading configuration from %s", cfg)
-	data, err := ioutil.ReadFile(cfg)
-	if err != nil {
-		log.Fatalf("File reading error: %v", err)
-		return
-	}
+	config.ReadConfigFromFile(cfg)
 
-	if err := yaml.UnmarshalStrict(data, &config); err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	log.Printf("Reading following config from config file: %#v", config)
-
-	settings = config.Settings
-	actuators = config.Actuators
-	sensors = config.Sensors
+	settings = *config.GetSettings()
+	actuators = *config.GetActuators()
+	sensors = *config.GetSensors()
 	evok.SetSensors(&sensors)
 	evok.InitializeSensorsValues()
 
 	// get configuration values
-	err = getSettings()
+	err := config.UpdateValuesFromHomeAssistant(hassClient)
 	if err != nil {
 		log.Fatalf("Error getting settings: %v", err)
 	}
+	settings = *config.GetSettings()
 
 	setStatus("startup")
 
@@ -334,7 +256,7 @@ func main() {
 		// Expose metrics
 		http.Handle("/metrics", promhttp.Handler())
 		// Expose config
-		http.HandleFunc("/config", httpConfig)
+		http.HandleFunc("/config", config.ExposeOnHTTP)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
 		// Expose current sensors data
@@ -351,7 +273,8 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			getSettings()
+			config.UpdateValuesFromHomeAssistant(hassClient)
+			settings = *config.GetSettings()
 		}
 	}()
 

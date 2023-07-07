@@ -1,12 +1,5 @@
 package types
 
-type Config struct {
-	//ReducedTime float64   `yaml:"reduced_heat_exchange"`
-	Actuators Actuators `yaml:"actuators"`
-	Sensors   Sensors   `yaml:"sensors"`
-	Settings  Settings  `yaml:"settings"`
-}
-
 type Settings struct {
 	SolarCritical HomeAssistantEntity `yaml:"solarCritical"`
 	SolarOn       HomeAssistantEntity `yaml:"solarOn"`

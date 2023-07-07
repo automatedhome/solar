@@ -10,33 +10,33 @@ import (
 	types "github.com/automatedhome/solar/pkg/types"
 )
 
-var (
-	homeAssistantAddress string
-	homeAssistantToken   string
-	httpClient           = &http.Client{}
-)
-
-func SetAddress(address string) {
-	homeAssistantAddress = address
+type Client struct {
+	Address string
+	Token   string
+	client  *http.Client
 }
 
-func SetToken(token string) {
-	homeAssistantToken = token
+func NewClient(address, token string) *Client {
+	return &Client{
+		Address: address,
+		Token:   token,
+		client:  &http.Client{},
+	}
 }
 
-func GetSingleValue(entity string) (float64, error) {
-	address := fmt.Sprintf("http://%s/api/states/%s", homeAssistantAddress, entity)
+func (c *Client) GetSingleValue(entity string) (float64, error) {
+	address := fmt.Sprintf("http://%s/api/states/%s", c.Address, entity)
 
 	req, err := http.NewRequest("GET", address, nil)
 	if err != nil {
 		return -1, fmt.Errorf("could not create request: %w", err)
 	}
 
-	if homeAssistantToken != "" {
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", homeAssistantToken))
+	if c.Token != "" {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.Token))
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return -1, fmt.Errorf("could not get data from Home Assistant: %w", err)
 	}

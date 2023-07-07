@@ -24,7 +24,7 @@ type Status struct {
 
 var (
 	promMetrics    *metrics
-	cfg            *config.Config
+	configClient   *config.Config
 	circuitRunning bool
 	invertFlow     bool
 	lastPass       time.Time
@@ -89,19 +89,19 @@ func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := evok.SetSingleValue(cfg.GetActuators().Pump.Dev, cfg.GetActuators().Pump.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(configClient.GetActuators().Pump.Dev, configClient.GetActuators().Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(cfg.GetActuators().Switch.Dev, cfg.GetActuators().Switch.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(configClient.GetActuators().Switch.Dev, configClient.GetActuators().Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setFlow(cfg.GetSettings().Flow.DutyMin.Value); err != nil {
+		if err := setFlow(configClient.GetSettings().Flow.DutyMin.Value); err != nil {
 			log.Println(err)
 			return
 		}
@@ -116,13 +116,13 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := evok.SetSingleValue(cfg.GetActuators().Pump.Dev, cfg.GetActuators().Pump.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(configClient.GetActuators().Pump.Dev, configClient.GetActuators().Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(cfg.GetActuators().Switch.Dev, cfg.GetActuators().Switch.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(configClient.GetActuators().Switch.Dev, configClient.GetActuators().Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -144,24 +144,24 @@ func calculateFlow(delta float64) float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	flowCfg := cfg.GetSettings().Flow
+	flowconfigClient := configClient.GetSettings().Flow
 
-	if delta <= flowCfg.TempMin.Value {
-		return flowCfg.DutyMin.Value
+	if delta <= flowconfigClient.TempMin.Value {
+		return flowconfigClient.DutyMin.Value
 	}
-	if delta >= flowCfg.TempMax.Value {
-		return flowCfg.DutyMax.Value
+	if delta >= flowconfigClient.TempMax.Value {
+		return flowconfigClient.DutyMax.Value
 	}
 	// Flow(ΔT) = a * ΔT + b
-	a := (flowCfg.DutyMax.Value - flowCfg.DutyMin.Value) / (flowCfg.TempMax.Value - flowCfg.TempMin.Value)
-	b := flowCfg.DutyMin.Value - flowCfg.TempMin.Value*a
+	a := (flowconfigClient.DutyMax.Value - flowconfigClient.DutyMin.Value) / (flowconfigClient.TempMax.Value - flowconfigClient.TempMin.Value)
+	b := flowconfigClient.DutyMin.Value - flowconfigClient.TempMin.Value*a
 	flow := a*delta + b
 
-	if flow > flowCfg.DutyMax.Value {
-		flow = flowCfg.DutyMax.Value
+	if flow > flowconfigClient.DutyMax.Value {
+		flow = flowconfigClient.DutyMax.Value
 	}
-	if flow < flowCfg.DutyMin.Value {
-		flow = flowCfg.DutyMin.Value
+	if flow < flowconfigClient.DutyMin.Value {
+		flow = flowconfigClient.DutyMin.Value
 	}
 	return flow
 }
@@ -173,7 +173,7 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 
-	if err := evok.SetSingleValue(cfg.GetActuators().Flow.Dev, cfg.GetActuators().Flow.Circuit, value); err != nil {
+	if err := evok.SetSingleValue(configClient.GetActuators().Flow.Dev, configClient.GetActuators().Flow.Circuit, value); err != nil {
 		log.Println(err)
 		return err
 	}
@@ -232,25 +232,24 @@ func init() {
 		log.Println("Setting inverted mode for actuator - higher voltage causes less flow")
 	}
 
-	var cfgFile string
+	var configClientFile string
 	if _, err := os.Stat(internalConfigFile); err == nil {
-		cfgFile = internalConfigFile
+		configClientFile = internalConfigFile
 	} else {
-		cfgFile = *configFile
+		configClientFile = *configFile
 	}
 
 	var err error
-	cfg, err = config.NewConfig(cfgFile)
+	configClient, err = config.NewConfig(configClientFile)
 	if err != nil {
 		log.Fatalf("Error synthesizing configuration: %v", err)
 	}
 
 	// Initialize sensors addresses. No data is passed at this stage, only configuration.
-	sensorsData := *cfg.GetSensors()
+	sensorsConfig := *configClient.GetSensors()
 
-	log.Printf("Initializing sensors: %+v\n", sensorsData)
 	// Pass sensors configuration to evok
-	evok.SetSensors(&sensorsData)
+	evok.SetSensors(&sensorsConfig)
 	// Initialize sensors values
 	err = evok.InitializeSensorsValues()
 	if err != nil {
@@ -258,7 +257,7 @@ func init() {
 	}
 
 	// get configuration values
-	err = cfg.ReadValuesFromHomeAssistant(hassClient)
+	err = configClient.ReadValuesFromHomeAssistant(hassClient)
 	if err != nil {
 		log.Fatalf("Error getting settings from HomeAssistant: %v", err)
 	}
@@ -279,7 +278,7 @@ func main() {
 		// Expose metrics
 		http.Handle("/metrics", promHandler)
 		// Expose config
-		http.HandleFunc("/config", cfg.ExposeSettingsOnHTTP)
+		http.HandleFunc("/config", configClient.ExposeSettingsOnHTTP)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
 		// Expose current sensors data
@@ -296,7 +295,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			err := cfg.ReadValuesFromHomeAssistant(hassClient)
+			err := configClient.ReadValuesFromHomeAssistant(hassClient)
 			if err != nil {
 				log.Printf("Error getting settings from HomeAssistant: %v", err)
 			}
@@ -316,21 +315,21 @@ func main() {
 
 		s := evok.GetSensors()
 
-		log.Printf("Current sensors config: %+v\n", cfg.GetSensors())
+		log.Printf("Current sensors config: %+v\n", configClient.GetSensors())
 
-		cfgData := cfg.GetSettings()
+		cfg := configClient.GetSettings()
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		promMetrics.controlDelta.Set(delta)
 
-		if s.SolarUp.Value >= cfgData.SolarCritical.Value {
+		if s.SolarUp.Value >= cfg.SolarCritical.Value {
 			setStatus("failsafe shutdown")
 			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", s.SolarUp.Value))
 			promMetrics.failsafeTotal.Inc()
 			continue
 		}
 
-		if s.TankUp.Value > cfgData.TankMax.Value {
+		if s.TankUp.Value > cfg.TankMax.Value {
 			setStatus("tank filled")
 			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", s.TankUp.Value))
 			promMetrics.tankfullTotal.Inc()
@@ -346,9 +345,9 @@ func main() {
 			continue
 		}
 
-		if delta > cfgData.SolarOff.Value {
+		if delta > cfg.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta >= cfgData.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
+			if delta >= cfg.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
 				setStatus("working")
 				start()
 			}
@@ -362,7 +361,7 @@ func main() {
 			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode")
 				setStatus("reduced mode")
-				if err := setFlow(cfgData.Flow.DutyMin.Value); err != nil {
+				if err := setFlow(cfg.Flow.DutyMin.Value); err != nil {
 					log.Println(err)
 				} else {
 					reducedMode = true

@@ -37,11 +37,11 @@ var (
 	evokAddress string
 	sensors     *Sensors
 
-	/*solarPanelVoltage = promauto.NewGauge(prometheus.GaugeOpts{
+	/*solarPanelVoltage = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "solar_panel_voltage_volts",
 		Help: "Voltage reported by solar panel temperature sensor",
 	})
-	solarPanelTemperature = promauto.NewGauge(prometheus.GaugeOpts{
+	solarPanelTemperature = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "solar_panel_temperature_celsius",
 		Help: "Temperature of solar panel",
 	})*/
@@ -125,6 +125,8 @@ func parseData(data []Device) {
 		if msg.Circuit == sensors.SolarUp.Circuit && msg.Dev == sensors.SolarUp.Dev {
 			temp := calculateTemperature(msg.Value)
 			sensors.SolarUp.Value = temp
+			//solarPanelTemperature.Set(temp)
+			//solarPanelVoltage.Set(msg.Value)
 			continue
 		}
 

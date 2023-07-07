@@ -37,8 +37,6 @@ var (
 	evokAddress string
 	sensors     *Sensors
 
-	conn *net.Conn
-
 	/*solarPanelVoltage = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "solar_panel_voltage_volts",
 		Help: "Voltage reported by solar panel temperature sensor",
@@ -195,7 +193,7 @@ func GetSingleValue(dev, circuit string) (float64, error) {
 func SetSingleValue(dev, circuit string, value float64) error {
 	address := fmt.Sprintf("http://%s/json/%s/%s", evokAddress, dev, circuit)
 
-	stringValue := "0"
+	var stringValue string
 	if dev == "ao" {
 		stringValue = fmt.Sprintf("%.2f", value)
 	} else {

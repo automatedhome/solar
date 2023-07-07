@@ -218,19 +218,25 @@ func init() {
 		cfg = *configFile
 	}
 
-	config.NewConfig(cfg)
+	configs, err := config.NewConfig(cfg)
+	if err != nil {
+		log.Fatalf("Error synthesizing configuration: %v", err)
+	}
 
 	// Initialize sensors addresses. No data is passed at this stage, only configuration.
 	sensorsData := *configs.GetSensors()
 	// Pass sensors configuration to evok
 	evok.SetSensors(&sensorsData)
 	// Initialize sensors values
-	evok.InitializeSensorsValues()
+	err = evok.InitializeSensorsValues()
+	if err != nil {
+		log.Fatalf("Error initializing sensors: %v", err)
+	}
 
 	// get configuration values
-	err := configs.ReadValuesFromHomeAssistant(hassClient)
+	err = configs.ReadValuesFromHomeAssistant(hassClient)
 	if err != nil {
-		log.Fatalf("Error getting settings: %v", err)
+		log.Fatalf("Error getting settings from HomeAssistant: %v", err)
 	}
 
 	setStatus("startup")
@@ -261,7 +267,10 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			configs.ReadValuesFromHomeAssistant(hassClient)
+			err := configs.ReadValuesFromHomeAssistant(hassClient)
+			if err != nil {
+				log.Printf("Error getting settings from HomeAssistant: %v", err)
+			}
 		}
 	}()
 

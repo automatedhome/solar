@@ -9,9 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,25 +20,22 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 
-	mqttclient "github.com/automatedhome/common/pkg/mqttclient"
 	types "github.com/automatedhome/solar/pkg/types"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 var (
-	config             types.Config
-	settings           types.Settings
-	sensors            types.Sensors
-	actuators          types.Actuators
-	client             mqtt.Client
-	circuitRunning     bool
-	invertFlow         bool
-	internalConfigFile string
-	lastPass           time.Time
-	systemStatus       types.Status
-	evokAddress        string
-	//homeAssistantAddress string
-	//homeAssistantToken   string
+	config               types.Config
+	settings             types.Settings
+	sensors              types.Sensors
+	actuators            types.Actuators
+	circuitRunning       bool
+	invertFlow           bool
+	internalConfigFile   string
+	lastPass             time.Time
+	systemStatus         types.Status
+	evokAddress          string
+	homeAssistantAddress string
+	homeAssistantToken   string
 )
 
 var (
@@ -137,41 +132,6 @@ func parseEvokData(data []types.EvokDevice) {
 	}
 }
 
-/*func getSingleHomeAssistantValue(entity string) (string, error) {
-	address := fmt.Sprintf("http://%s/api/states/%s", homeAssistantAddress, entity)
-	authToken := fmt.Sprintf("Bearer %s", homeAssistantToken)
-
-	req, err := http.NewRequest("GET", address, nil)
-	if err != nil {
-		log.Printf("Could not create request: %#v", err)
-		return "", err
-	}
-
-	req.Header.Add("Authorization", authToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Printf("Could not get data from Home Assistant: %#v", err)
-		return "", err
-	}
-
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Could not read response body: %#v", err)
-		return "", err
-	}
-
-	var data types.HomeAssistantEntity
-	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Could not parse received data: %#v", err)
-		return "", err
-	}
-
-	return data.State, nil
-}*/
-
 func getSingleEvokValue(dev, circuit string) (float64, error) {
 	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
 
@@ -227,29 +187,97 @@ func setEvokSingleValue(dev, circuit string, value float64) error {
 	return nil
 }
 
-func onMessage(client mqtt.Client, message mqtt.Message) {
-	value, err := strconv.ParseFloat(string(message.Payload()), 64)
+func getSingleHomeAssistantValue(entity string) (float64, error) {
+	address := fmt.Sprintf("http://%s/api/states/%s", homeAssistantAddress, entity)
+
+	req, err := http.NewRequest("GET", address, nil)
 	if err != nil {
-		log.Printf("Received incorrect message payload: '%v'\n", message.Payload())
-		return
+		log.Printf("Could not create request: %#v", err)
+		return -1, err
 	}
-	switch message.Topic() {
-	case settings.SolarCritical.Address:
-		settings.SolarCritical.Value = value
-	case settings.SolarOn.Address:
-		settings.SolarOn.Value = value
-	case settings.SolarOff.Address:
-		settings.SolarOff.Value = value
-	case settings.TankMax.Address:
-		settings.TankMax.Value = value
-	case settings.Flow.DutyMin.Address:
-		settings.Flow.DutyMin.Value = value
-	case settings.Flow.DutyMax.Address:
-		settings.Flow.DutyMax.Value = value
-	case settings.Flow.TempMin.Address:
-		settings.Flow.TempMin.Value = value
-	case settings.Flow.TempMax.Address:
-		settings.Flow.TempMax.Value = value
+
+	if homeAssistantToken != "" {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", homeAssistantToken))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("Could not get data from Home Assistant: %#v", err)
+		return -1, err
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Could not read response body: %#v", err)
+		return -1, err
+	}
+
+	var data types.HomeAssistantEntity
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Printf("Could not parse received data: %#v", err)
+		return -1, err
+	}
+
+	return data.Value, nil
+}
+
+func getSettings() {
+	var err error
+	settings.SolarCritical.Value, err = getSingleHomeAssistantValue(settings.SolarCritical.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for solar critical temperature from Home Assistant: %#v", err)
+	}
+	settings.SolarOn.Value, _ = getSingleHomeAssistantValue(settings.SolarOn.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for solar on temperature from Home Assistant: %#v", err)
+	}
+	settings.SolarOff.Value, _ = getSingleHomeAssistantValue(settings.SolarOff.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for solar off temperature from Home Assistant: %#v", err)
+	}
+	settings.TankMax.Value, _ = getSingleHomeAssistantValue(settings.TankMax.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for tank max temperature from Home Assistant: %#v", err)
+	}
+
+	settings.Flow.DutyMin.Value, _ = getSingleHomeAssistantValue(settings.Flow.DutyMin.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for flow duty min from Home Assistant: %#v", err)
+	}
+	settings.Flow.DutyMax.Value, _ = getSingleHomeAssistantValue(settings.Flow.DutyMax.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for flow duty max from Home Assistant: %#v", err)
+	}
+	settings.Flow.TempMin.Value, _ = getSingleHomeAssistantValue(settings.Flow.TempMin.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for flow temp min from Home Assistant: %#v", err)
+	}
+	settings.Flow.TempMax.Value, _ = getSingleHomeAssistantValue(settings.Flow.TempMax.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
+	}
+}
+
+func getSensorValues() {
+	var err error
+	// initialize sensors
+	sensors.SolarUp.Value, err = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.SolarIn.Value, err = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.SolarOut.Value, err = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	sensors.TankUp.Value, err = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
+	if err != nil {
+		log.Fatalf("error: %v", err)
 	}
 }
 
@@ -358,9 +386,6 @@ func setFlow(value float64) error {
 func setStatus(s string) {
 	systemStatus.Mode = s
 	systemStatus.Since = time.Now().Unix()
-	if err := mqttclient.Publish(client, "solar/status", 0, false, s); err != nil {
-		log.Println(err)
-	}
 }
 
 func httpStatus(w http.ResponseWriter, r *http.Request) {
@@ -441,23 +466,20 @@ func init() {
 	circuitRunning = false
 	internalConfigFile = "/tmp/config.yaml"
 
-	broker := flag.String("broker", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
-	clientID := flag.String("clientid", "solar", "A clientid for the connection")
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
 	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
-	addr := flag.String("evok-address", "localhost:8080", "EVOK API address (default: localhost:8080)")
+	eaddr := flag.String("evok-address", "localhost:8080", "EVOK API address (default: localhost:8080)")
+	haddr := flag.String("homeassistant-address", "localhost:8123", "HomeAssistant API address (default: localhost:8123)")
+	htoken := flag.String("homeassistant-token", "", "HomeAssistant API token")
 	flag.Parse()
 
-	evokAddress = *addr
+	evokAddress = *eaddr
+	homeAssistantAddress = *haddr
+	homeAssistantToken = *htoken
 
 	invertFlow = *invert
 	if invertFlow {
 		log.Println("Setting inverted mode for actuator - higher voltage causes less flow")
-	}
-
-	brokerURL, err := url.Parse(*broker)
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	var cfg string
@@ -483,30 +505,11 @@ func init() {
 	actuators = config.Actuators
 	sensors = config.Sensors
 
-	// initialize sensors
-	sensors.SolarUp.Value, err = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.SolarIn.Value, err = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.SolarOut.Value, err = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.TankUp.Value, err = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
+	// get configuration values
+	getSettings()
 
-	// subscribe to configuration-related topics
-	var topics []string
-	topics = append(topics, settings.SolarCritical.Address, settings.SolarOn.Address, settings.SolarOff.Address, settings.TankMax.Address)
-	topics = append(topics, settings.Flow.TempMin.Address, settings.Flow.TempMax.Address, settings.Flow.DutyMin.Address, settings.Flow.DutyMax.Address)
-	client = mqttclient.New(*clientID, brokerURL, topics, onMessage)
-	log.Printf("Connected to %s as %s and waiting for messages\n", *broker, *clientID)
+	// initialize sensors
+	getSensorValues()
 
 	setStatus("startup")
 
@@ -531,6 +534,14 @@ func main() {
 		err := http.ListenAndServe(":7001", nil)
 		if err != nil {
 			panic("HTTP Server for metrics exposition failed: " + err.Error())
+		}
+	}()
+
+	// periodically refresh settings
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			getSettings()
 		}
 	}()
 

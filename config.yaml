@@ -25,27 +25,19 @@ sensors:
     circuit: "28FFABCDEFFEDCBA"
 settings:
   solarCritical:
-    address: "solar/settings/critical"
-    value: 90
+    entity_id: "input_number.solar_critical"
   solarOn:
-    address: "solar/settings/on"
-    value: 8
+    entity_id: "input_number.solar_diff_on"
   solarOff:
-    address: "solar/settings/off"
-    value: 5
+    entity_id: "input_number.solar_diff_off"
   tankMax:
-    address: "solar/settings/tank"
-    value: 65
+    entity_id: "input_number.solar_tank_max"
   flow:
     tempMin:
-      address: "solar/settings/flow/t_min"
-      value: 5
+      entity_id: "input_number.solar_flow_temp_min"
     tempMax:
-      address: "solar/settings/flow/t_max"
-      value: 9
+      entity_id: "input_number.solar_flow_temp_max"
     dutyMin:
-      address: "solar/settings/flow/d_min"
-      value: 1.8
+      entity_id: "input_number.solar_flow_duty_min"
     dutyMax:
-      address: "solar/settings/flow/d_max"
-      value: 3
+      entity_id: "input_number.solar_flow_duty_max"

@@ -1,24 +1,20 @@
 package types
 
-import (
-	common "github.com/automatedhome/common/pkg/types"
-)
-
 type Status struct {
 	Mode  string `json:"mode"`
 	Since int64  `json:"since"`
 }
 
 type Settings struct {
-	SolarCritical common.DataPoint `yaml:"solarCritical"`
-	SolarOn       common.DataPoint `yaml:"solarOn"`
-	SolarOff      common.DataPoint `yaml:"solarOff"`
-	TankMax       common.DataPoint `yaml:"tankMax"`
+	SolarCritical HomeAssistantEntity `yaml:"solarCritical"`
+	SolarOn       HomeAssistantEntity `yaml:"solarOn"`
+	SolarOff      HomeAssistantEntity `yaml:"solarOff"`
+	TankMax       HomeAssistantEntity `yaml:"tankMax"`
 	Flow          struct {
-		DutyMin common.DataPoint `yaml:"dutyMin"`
-		TempMin common.DataPoint `yaml:"tempMin"`
-		DutyMax common.DataPoint `yaml:"dutyMax"`
-		TempMax common.DataPoint `yaml:"tempMax"`
+		DutyMin HomeAssistantEntity `yaml:"dutyMin"`
+		TempMin HomeAssistantEntity `yaml:"tempMin"`
+		DutyMax HomeAssistantEntity `yaml:"dutyMax"`
+		TempMax HomeAssistantEntity `yaml:"tempMax"`
 	} `yaml:"flow"`
 }
 
@@ -43,15 +39,12 @@ type Config struct {
 }
 
 type EvokDevice struct {
-	Value   float64 `json:"value,omitempty"`
-	Circuit string  `json:"circuit"`
-	Dev     string  `json:"dev"`
+	Value   float64 `json:"value,omitempty" yaml:"value,omitempty"`
+	Circuit string  `json:"circuit" yaml:"circuit"`
+	Dev     string  `json:"dev" yaml:"dev"`
 }
 
-/*
 type HomeAssistantEntity struct {
-	Name     string `json:"name"`
-	UniqueId string `json:"unique_id"`
-	State    string `json:"state"`
+	EntityID string  `json:"entity_id" yaml:"entity_id"`
+	Value    float64 `json:"state,omitempty" yaml:"state,omitempty"`
 }
-*/

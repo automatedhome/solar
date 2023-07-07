@@ -33,34 +33,38 @@ type Actuators struct {
 	Flow   Device `yaml:"flow"`
 }
 
-var (
-	evokAddress string
-	sensors     *Sensors
-
-	/*solarPanelVoltage = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "solar_panel_voltage_volts",
-		Help: "Voltage reported by solar panel temperature sensor",
-	})
-	solarPanelTemperature = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "solar_panel_temperature_celsius",
-		Help: "Temperature of solar panel",
-	})*/
-)
-
-func SetAddress(address string) {
-	evokAddress = address
+type Client struct {
+	Sensors     Sensors
+	Actuators   Actuators
+	wsAddress   string
+	httpAddress string
+	httpClient  *http.Client
+	wsConn      net.Conn
 }
 
-func SetSensors(s *Sensors) {
-	sensors = s
+func NewClient(address string, sensors Sensors, actuators Actuators) *Client {
+	wsAddress := "ws://" + address + "/ws"
+	httpAddress := "http://" + address
+	return &Client{
+		Sensors:     sensors,
+		Actuators:   actuators,
+		wsAddress:   wsAddress,
+		wsConn:      nil,
+		httpAddress: httpAddress,
+		httpClient:  &http.Client{},
+	}
 }
 
-func GetSensors() *Sensors {
-	return sensors
+func (c *Client) GetSensors() *Sensors {
+	return &c.Sensors
 }
 
-func ExposeSensorsOnHTTP(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(&sensors)
+func (c *Client) GetActuators() *Actuators {
+	return &c.Actuators
+}
+
+func (c *Client) ExposeSensorsOnHTTP(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(&c.Sensors)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -73,39 +77,42 @@ func ExposeSensorsOnHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func HandleWebsocketConnection() {
-	fmt.Printf("Connecting to EVOK at %s\n", evokAddress)
+func (c *Client) HandleWebsocketConnection() {
+	fmt.Printf("Connecting to EVOK at %s\n", c.wsAddress)
 
-	conn, err := establishWebsocketConnection(evokAddress)
+	err := c.establishWebsocketConnection()
 	if err != nil {
 		panic(fmt.Sprintf("Connecting to EVOK failed: %v", err))
 	}
-	defer conn.Close()
+	defer c.wsConn.Close()
 
-	sendWebsocketFilterMessage(conn)
+	c.sendWebsocketFilterMessage()
 
-	processWebsocketMessages(conn)
+	c.processWebsocketMessages()
 }
 
-func establishWebsocketConnection(address string) (net.Conn, error) {
-	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "ws://"+address+"/ws")
+func (c *Client) establishWebsocketConnection() error {
+	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), c.wsAddress)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return conn, nil
+
+	c.wsConn = conn
+
+	return nil
 }
 
-func sendWebsocketFilterMessage(conn net.Conn) {
+func (c *Client) sendWebsocketFilterMessage() {
 	msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"temp\"]}"
-	if err := wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
+	if err := wsutil.WriteClientMessage(c.wsConn, ws.OpText, []byte(msg)); err != nil {
 		panic("Sending websocket message to EVOK failed: " + err.Error())
 	}
 }
 
-func processWebsocketMessages(conn net.Conn) {
+func (c *Client) processWebsocketMessages() {
 	var inputs []Device
 	for {
-		payload, err := wsutil.ReadServerText(conn)
+		payload, err := wsutil.ReadServerText(c.wsConn)
 		if err != nil {
 			log.Printf("Received incorrect data: %#v", err)
 			continue
@@ -116,31 +123,26 @@ func processWebsocketMessages(conn net.Conn) {
 			continue
 		}
 
-		parseData(inputs)
+		c.parseData(inputs)
 	}
 }
 
-func parseData(data []Device) {
+func (c *Client) parseData(data []Device) {
 	for _, msg := range data {
-		if msg.Circuit == sensors.SolarUp.Circuit && msg.Dev == sensors.SolarUp.Dev {
+		switch {
+		case msg.Circuit == c.Sensors.SolarUp.Circuit && msg.Dev == c.Sensors.SolarUp.Dev:
 			temp := calculateTemperature(msg.Value)
-			sensors.SolarUp.Value = temp
+			c.Sensors.SolarUp.Value = temp
 			//solarPanelTemperature.Set(temp)
 			//solarPanelVoltage.Set(msg.Value)
+		case msg.Dev != "temp":
 			continue
-		}
-
-		if msg.Dev != "temp" {
-			continue
-		}
-
-		switch msg.Circuit {
-		case sensors.SolarIn.Circuit:
-			sensors.SolarIn.Value = msg.Value
-		case sensors.SolarOut.Circuit:
-			sensors.SolarOut.Value = msg.Value
-		case sensors.TankUp.Circuit:
-			sensors.TankUp.Value = msg.Value
+		case msg.Circuit == c.Sensors.SolarIn.Circuit:
+			c.Sensors.SolarIn.Value = msg.Value
+		case msg.Circuit == c.Sensors.SolarOut.Circuit:
+			c.Sensors.SolarOut.Value = msg.Value
+		case msg.Circuit == c.Sensors.TankUp.Circuit:
+			c.Sensors.TankUp.Value = msg.Value
 		}
 	}
 }
@@ -149,29 +151,45 @@ func calculateTemperature(voltage float64) float64 {
 	return voltage*(200-0)/12 + 0
 }
 
-func InitializeSensorsValues() error {
+func (c *Client) InitializeSensorsValues() error {
 	var err error
-	sensors.SolarUp.Value, err = GetSingleValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
+	var errs []error
+
+	err = c.updateValue(&c.Sensors.SolarUp)
 	if err != nil {
-		return fmt.Errorf("failed to initialize SolarUp value: %w", err)
+		errs = append(errs, err)
 	}
-	sensors.SolarIn.Value, err = GetSingleValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
+	err = c.updateValue(&c.Sensors.SolarIn)
 	if err != nil {
-		return fmt.Errorf("failed to initialize SolarIn value: %w", err)
+		errs = append(errs, err)
 	}
-	sensors.SolarOut.Value, err = GetSingleValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
+	err = c.updateValue(&c.Sensors.SolarOut)
 	if err != nil {
-		return fmt.Errorf("failed to initialize SolarOut value: %w", err)
+		errs = append(errs, err)
 	}
-	sensors.TankUp.Value, err = GetSingleValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
+	err = c.updateValue(&c.Sensors.TankUp)
 	if err != nil {
-		return fmt.Errorf("failed to initialize TankUp value: %w", err)
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("encountered %d error(s) while fetching settings", len(errs))
+	}
+
+	return nil
+}
+
+func (c *Client) updateValue(obj *Device) error {
+	var err error
+	obj.Value, err = c.getValue(obj.Dev, obj.Circuit)
+	if err != nil {
+		return fmt.Errorf("failed to update value: %w", err)
 	}
 	return nil
 }
 
-func GetSingleValue(dev, circuit string) (float64, error) {
-	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
+func (c *Client) getValue(dev, circuit string) (float64, error) {
+	address := fmt.Sprintf("%s/rest/%s/%s", c.httpAddress, dev, circuit)
 
 	resp, err := http.Get(address)
 	if err != nil {
@@ -192,8 +210,8 @@ func GetSingleValue(dev, circuit string) (float64, error) {
 	return data.Value, nil
 }
 
-func SetSingleValue(dev, circuit string, value float64) error {
-	address := fmt.Sprintf("http://%s/json/%s/%s", evokAddress, dev, circuit)
+func (c *Client) SetValue(dev, circuit string, value float64) error {
+	address := fmt.Sprintf("%s/json/%s/%s", c.httpAddress, dev, circuit)
 
 	var stringValue string
 	if dev == "ao" {

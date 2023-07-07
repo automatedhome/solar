@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,13 +23,13 @@ type Status struct {
 
 var (
 	promMetrics    *metrics
-	configClient   *config.Config
 	circuitRunning bool
 	invertFlow     bool
 	lastPass       time.Time
 	systemStatus   Status
 
-	hassClient *homeassistant.Client
+	hass       *homeassistant.Client
+	evokClient *evok.Client
 )
 
 type metrics struct {
@@ -89,19 +88,22 @@ func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := evok.SetSingleValue(configClient.GetActuators().Pump.Dev, configClient.GetActuators().Pump.Circuit, 0); err != nil {
+		act := evokClient.GetActuators()
+
+		if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(configClient.GetActuators().Switch.Dev, configClient.GetActuators().Switch.Circuit, 0); err != nil {
+		if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setFlow(configClient.GetSettings().Flow.DutyMin.Value); err != nil {
+		minFlow := hass.GetSettings().Flow.DutyMin.Value
+		if err := setFlow(minFlow); err != nil {
 			log.Println(err)
 			return
 		}
@@ -116,13 +118,15 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := evok.SetSingleValue(configClient.GetActuators().Pump.Dev, configClient.GetActuators().Pump.Circuit, 1); err != nil {
+		act := evokClient.GetActuators()
+
+		if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(configClient.GetActuators().Switch.Dev, configClient.GetActuators().Switch.Circuit, 1); err != nil {
+		if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -144,24 +148,24 @@ func calculateFlow(delta float64) float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	flowconfigClient := configClient.GetSettings().Flow
+	flowConfig := hass.GetSettings().Flow
 
-	if delta <= flowconfigClient.TempMin.Value {
-		return flowconfigClient.DutyMin.Value
+	if delta <= flowConfig.TempMin.Value {
+		return flowConfig.DutyMin.Value
 	}
-	if delta >= flowconfigClient.TempMax.Value {
-		return flowconfigClient.DutyMax.Value
+	if delta >= flowConfig.TempMax.Value {
+		return flowConfig.DutyMax.Value
 	}
 	// Flow(ΔT) = a * ΔT + b
-	a := (flowconfigClient.DutyMax.Value - flowconfigClient.DutyMin.Value) / (flowconfigClient.TempMax.Value - flowconfigClient.TempMin.Value)
-	b := flowconfigClient.DutyMin.Value - flowconfigClient.TempMin.Value*a
+	a := (flowConfig.DutyMax.Value - flowConfig.DutyMin.Value) / (flowConfig.TempMax.Value - flowConfig.TempMin.Value)
+	b := flowConfig.DutyMin.Value - flowConfig.TempMin.Value*a
 	flow := a*delta + b
 
-	if flow > flowconfigClient.DutyMax.Value {
-		flow = flowconfigClient.DutyMax.Value
+	if flow > flowConfig.DutyMax.Value {
+		flow = flowConfig.DutyMax.Value
 	}
-	if flow < flowconfigClient.DutyMin.Value {
-		flow = flowconfigClient.DutyMin.Value
+	if flow < flowConfig.DutyMin.Value {
+		flow = flowConfig.DutyMin.Value
 	}
 	return flow
 }
@@ -173,7 +177,8 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 
-	if err := evok.SetSingleValue(configClient.GetActuators().Flow.Dev, configClient.GetActuators().Flow.Circuit, value); err != nil {
+	flowConfig := evokClient.GetActuators().Flow
+	if err := evokClient.SetValue(flowConfig.Dev, flowConfig.Circuit, value); err != nil {
 		log.Println(err)
 		return err
 	}
@@ -212,60 +217,46 @@ func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 
 func init() {
 	circuitRunning = false
-	internalConfigFile := "/tmp/config.yaml"
 
-	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
+	configFile := flag.String("config", "", "Provide configuration file with MQTT topic mappings")
 	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
 	eaddr := flag.String("evok-address", "localhost:8080", "EVOK API address (default: localhost:8080)")
 	haddr := flag.String("homeassistant-address", "localhost:8123", "HomeAssistant API address (default: localhost:8123)")
 	htoken := flag.String("homeassistant-token", "", "HomeAssistant API token")
 	flag.Parse()
 
-	// Set EVOK address
-	evok.SetAddress(*eaddr)
-
-	// Set Home Assistant address and token
-	hassClient = homeassistant.NewClient(*haddr, *htoken)
-
 	invertFlow = *invert
 	if invertFlow {
 		log.Println("Setting inverted mode for actuator - higher voltage causes less flow")
 	}
 
-	var configClientFile string
-	if _, err := os.Stat(internalConfigFile); err == nil {
-		configClientFile = internalConfigFile
-	} else {
-		configClientFile = *configFile
-	}
-
-	var err error
-	configClient, err = config.NewConfig(configClientFile)
+	// Load configuration
+	configClient, err := config.NewConfig(configFile)
 	if err != nil {
 		log.Fatalf("Error synthesizing configuration: %v", err)
 	}
 
-	// Initialize sensors addresses. No data is passed at this stage, only configuration.
-	sensorsConfig := *configClient.GetSensors()
+	// Set Home Assistant address, token, and entities configuration
+	hass = homeassistant.NewClient(*haddr, *htoken, *configClient.GetSettingsConfig())
 
-	// Pass sensors configuration to evok
-	evok.SetSensors(&sensorsConfig)
-	// Initialize sensors values
-	err = evok.InitializeSensorsValues()
-	if err != nil {
-		log.Fatalf("Error initializing sensors: %v", err)
-	}
-
-	// get configuration values
-	err = configClient.ReadValuesFromHomeAssistant(hassClient)
+	// Initialize configuration values
+	err = hass.UpdateAll()
 	if err != nil {
 		log.Fatalf("Error getting settings from HomeAssistant: %v", err)
+	}
+
+	// Set EVOK address and entities configuration
+	evokClient := evok.NewClient(*eaddr, *configClient.GetSensorsConfig(), *configClient.GetActuatorsConfig())
+
+	// Initialize sensors values
+	err = evokClient.InitializeSensorsValues()
+	if err != nil {
+		log.Fatalf("Error initializing sensors: %v", err)
 	}
 
 	setStatus("startup")
 
 	stop("SYSTEM RESET")
-
 }
 
 func main() {
@@ -278,11 +269,11 @@ func main() {
 		// Expose metrics
 		http.Handle("/metrics", promHandler)
 		// Expose config
-		http.HandleFunc("/config", configClient.ExposeSettingsOnHTTP)
+		http.HandleFunc("/config", hass.ExposeSettingsOnHTTP)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
 		// Expose current sensors data
-		http.HandleFunc("/sensors", evok.ExposeSensorsOnHTTP)
+		http.HandleFunc("/sensors", evokClient.ExposeSensorsOnHTTP)
 		// Expose healthcheck
 		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)
@@ -295,14 +286,14 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			err := configClient.ReadValuesFromHomeAssistant(hassClient)
+			err := hass.UpdateAll()
 			if err != nil {
 				log.Printf("Error getting settings from HomeAssistant: %v", err)
 			}
 		}
 	}()
 
-	go evok.HandleWebsocketConnection()
+	go evokClient.HandleWebsocketConnection()
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute
@@ -313,11 +304,9 @@ func main() {
 		time.Sleep(5 * time.Second)
 		lastPass = time.Now()
 
-		s := evok.GetSensors()
+		s := evokClient.GetSensors()
 
-		log.Printf("Current sensors config: %+v\n", configClient.GetSensors())
-
-		cfg := configClient.GetSettings()
+		cfg := hass.GetSettings()
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		promMetrics.controlDelta.Set(delta)

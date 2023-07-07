@@ -4,9 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 )
+
+type Settings struct {
+	SolarCritical Entity       `yaml:"solarCritical"`
+	SolarOn       Entity       `yaml:"solarOn"`
+	SolarOff      Entity       `yaml:"solarOff"`
+	TankMax       Entity       `yaml:"tankMax"`
+	Flow          FlowSettings `yaml:"flow"`
+}
+
+type FlowSettings struct {
+	DutyMin Entity `yaml:"dutyMin"`
+	TempMin Entity `yaml:"tempMin"`
+	DutyMax Entity `yaml:"dutyMax"`
+	TempMax Entity `yaml:"tempMax"`
+}
 
 type Entity struct {
 	EntityID string  `json:"entity_id" yaml:"entity_id"`
@@ -15,20 +31,95 @@ type Entity struct {
 }
 
 type Client struct {
-	Address string
-	Token   string
-	client  *http.Client
+	Settings Settings
+	Address  string
+	Token    string
+	client   *http.Client
 }
 
-func NewClient(address, token string) *Client {
+func NewClient(address, token string, settings Settings) *Client {
 	return &Client{
-		Address: address,
-		Token:   token,
-		client:  &http.Client{},
+		Address:  address,
+		Token:    token,
+		Settings: settings,
+		client:   &http.Client{},
 	}
 }
 
-func (c *Client) GetSingleValue(entity string) (float64, error) {
+func (c *Client) UpdateAll() error {
+	var errs []error
+	var err error
+
+	err = c.updateEntityValue(&c.Settings.SolarCritical)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.SolarOn)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.SolarOff)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.TankMax)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = c.updateEntityValue(&c.Settings.Flow.DutyMin)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.Flow.DutyMax)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.Flow.TempMin)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	err = c.updateEntityValue(&c.Settings.Flow.TempMax)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("encountered %d error(s) while fetching settings", len(errs))
+	}
+
+	return nil
+}
+
+func (c *Client) ExposeSettingsOnHTTP(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(c.Settings)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func (c *Client) GetSettings() Settings {
+	return c.Settings
+}
+
+func (c *Client) updateEntityValue(entity *Entity) error {
+	value, err := c.getSingleValue(entity.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for entity %s from Home Assistant: %#v", entity.EntityID, err)
+		return err
+	}
+	entity.Value = value
+	return nil
+}
+
+func (c *Client) getSingleValue(entity string) (float64, error) {
 	address := fmt.Sprintf("http://%s/api/states/%s", c.Address, entity)
 
 	req, err := http.NewRequest("GET", address, nil)

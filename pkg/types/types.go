@@ -1,8 +1,10 @@
 package types
 
-type Status struct {
-	Mode  string `json:"mode"`
-	Since int64  `json:"since"`
+type Config struct {
+	//ReducedTime float64   `yaml:"reduced_heat_exchange"`
+	Actuators Actuators `yaml:"actuators"`
+	Sensors   Sensors   `yaml:"sensors"`
+	Settings  Settings  `yaml:"settings"`
 }
 
 type Settings struct {
@@ -10,12 +12,14 @@ type Settings struct {
 	SolarOn       HomeAssistantEntity `yaml:"solarOn"`
 	SolarOff      HomeAssistantEntity `yaml:"solarOff"`
 	TankMax       HomeAssistantEntity `yaml:"tankMax"`
-	Flow          struct {
-		DutyMin HomeAssistantEntity `yaml:"dutyMin"`
-		TempMin HomeAssistantEntity `yaml:"tempMin"`
-		DutyMax HomeAssistantEntity `yaml:"dutyMax"`
-		TempMax HomeAssistantEntity `yaml:"tempMax"`
-	} `yaml:"flow"`
+	Flow          FlowSettings        `yaml:"flow"`
+}
+
+type FlowSettings struct {
+	DutyMin HomeAssistantEntity `yaml:"dutyMin"`
+	TempMin HomeAssistantEntity `yaml:"tempMin"`
+	DutyMax HomeAssistantEntity `yaml:"dutyMax"`
+	TempMax HomeAssistantEntity `yaml:"tempMax"`
 }
 
 type Sensors struct {
@@ -31,11 +35,9 @@ type Actuators struct {
 	Flow   EvokDevice `yaml:"flow"`
 }
 
-type Config struct {
-	//ReducedTime float64   `yaml:"reduced_heat_exchange"`
-	Actuators Actuators `yaml:"actuators"`
-	Sensors   Sensors   `yaml:"sensors"`
-	Settings  Settings  `yaml:"settings"`
+type Status struct {
+	Mode  string `json:"mode"`
+	Since int64  `json:"since"`
 }
 
 type EvokDevice struct {

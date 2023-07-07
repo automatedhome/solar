@@ -39,6 +39,8 @@ var (
 	homeAssistantToken   string
 )
 
+var httpClient = &http.Client{}
+
 var (
 	heatescapeTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "solar_heat_escape_total",
@@ -83,7 +85,7 @@ func handleWebsocketMessage(address string) {
 
 	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "ws://"+evokAddress+"/ws")
 	if err != nil {
-		panic("Connecting to EVOK failed: " + err.Error())
+		panic(fmt.Sprintf("Connecting to EVOK failed: %v", err))
 	}
 	defer conn.Close()
 
@@ -208,7 +210,7 @@ func getSingleHomeAssistantValue(entity string) (float64, error) {
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", homeAssistantToken))
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Printf("Could not get data from Home Assistant: %#v", err)
 		return -1, err
@@ -239,42 +241,56 @@ func getSingleHomeAssistantValue(entity string) (float64, error) {
 }
 
 func getSettings() error {
+	var errs []error
 	var err error
+
 	settings.SolarCritical.Value, err = getSingleHomeAssistantValue(settings.SolarCritical.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar critical temperature from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.SolarOn.Value, _ = getSingleHomeAssistantValue(settings.SolarOn.EntityID)
+	settings.SolarOn.Value, err = getSingleHomeAssistantValue(settings.SolarOn.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar on temperature from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.SolarOff.Value, _ = getSingleHomeAssistantValue(settings.SolarOff.EntityID)
+	settings.SolarOff.Value, err = getSingleHomeAssistantValue(settings.SolarOff.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar off temperature from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.TankMax.Value, _ = getSingleHomeAssistantValue(settings.TankMax.EntityID)
+	settings.TankMax.Value, err = getSingleHomeAssistantValue(settings.TankMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for tank max temperature from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
 
-	settings.Flow.DutyMin.Value, _ = getSingleHomeAssistantValue(settings.Flow.DutyMin.EntityID)
+	settings.Flow.DutyMin.Value, err = getSingleHomeAssistantValue(settings.Flow.DutyMin.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow duty min from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.Flow.DutyMax.Value, _ = getSingleHomeAssistantValue(settings.Flow.DutyMax.EntityID)
+	settings.Flow.DutyMax.Value, err = getSingleHomeAssistantValue(settings.Flow.DutyMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow duty max from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.Flow.TempMin.Value, _ = getSingleHomeAssistantValue(settings.Flow.TempMin.EntityID)
+	settings.Flow.TempMin.Value, err = getSingleHomeAssistantValue(settings.Flow.TempMin.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow temp min from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
-	settings.Flow.TempMax.Value, _ = getSingleHomeAssistantValue(settings.Flow.TempMax.EntityID)
+	settings.Flow.TempMax.Value, err = getSingleHomeAssistantValue(settings.Flow.TempMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
+		errs = append(errs, err)
 	}
 
-	return err
+	if len(errs) > 0 {
+		return fmt.Errorf("encountered %d error(s) while fetching settings", len(errs))
+	}
+
+	return nil
 }
 
 func getSensorValues() {
@@ -418,30 +434,6 @@ func httpStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func httpSolarPanelSensor(w http.ResponseWriter, r *http.Request) {
-	data := struct {
-		Name        string  `json:"name"`
-		Temperature float64 `json:"temperature"`
-		Voltage     float64 `json:"voltage"`
-	}{
-		Name:        "solarUp",
-		Temperature: sensors.SolarUp.Value,
-		Voltage:     -1,
-	}
-
-	js, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, err = w.Write(js)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
 func httpSensors(w http.ResponseWriter, r *http.Request) {
 	js, err := json.Marshal(sensors)
 	if err != nil {
@@ -545,8 +537,6 @@ func main() {
 		http.HandleFunc("/config", httpConfig)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
-		// Report solar panel sensor data // TODO: Rewrite to use generic funtion for all sensors
-		http.HandleFunc("/sensors/panel", httpSolarPanelSensor)
 		// Expose current sensors data
 		http.HandleFunc("/sensors", httpSensors)
 		// Expose healthcheck

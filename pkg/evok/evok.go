@@ -10,14 +10,32 @@ import (
 	"net"
 	"net/http"
 
-	types "github.com/automatedhome/solar/pkg/types"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
 
+type Device struct {
+	Value   float64 `json:"value,omitempty" yaml:"value,omitempty"`
+	Circuit string  `json:"circuit" yaml:"circuit"`
+	Dev     string  `json:"dev" yaml:"dev"`
+}
+
+type Sensors struct {
+	SolarUp  Device `yaml:"solarUp"`
+	SolarIn  Device `yaml:"solarIn"`
+	SolarOut Device `yaml:"solarOut"`
+	TankUp   Device `yaml:"tankUp"`
+}
+
+type Actuators struct {
+	Pump   Device `yaml:"pump"`
+	Switch Device `yaml:"switch"`
+	Flow   Device `yaml:"flow"`
+}
+
 var (
 	evokAddress string
-	sensors     *types.Sensors
+	sensors     *Sensors
 
 	conn *net.Conn
 
@@ -35,8 +53,26 @@ func SetAddress(address string) {
 	evokAddress = address
 }
 
-func SetSensors(s *types.Sensors) {
+func SetSensors(s *Sensors) {
 	sensors = s
+}
+
+func GetSensors() *Sensors {
+	return sensors
+}
+
+func ExposeSensorsOnHTTP(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(&sensors)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(js)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func HandleWebsocketConnection() {
@@ -69,7 +105,7 @@ func sendWebsocketFilterMessage(conn net.Conn) {
 }
 
 func processWebsocketMessages(conn net.Conn) {
-	var inputs []types.EvokDevice
+	var inputs []Device
 	for {
 		payload, err := wsutil.ReadServerText(conn)
 		if err != nil {
@@ -86,7 +122,7 @@ func processWebsocketMessages(conn net.Conn) {
 	}
 }
 
-func parseData(data []types.EvokDevice) {
+func parseData(data []Device) {
 	for _, msg := range data {
 		if msg.Circuit == sensors.SolarUp.Circuit && msg.Dev == sensors.SolarUp.Dev {
 			temp := calculateTemperature(msg.Value)
@@ -148,7 +184,7 @@ func GetSingleValue(dev, circuit string) (float64, error) {
 		return 0, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var data types.EvokDevice
+	var data Device
 	if err := json.Unmarshal(body, &data); err != nil {
 		return 0, fmt.Errorf("failed to parse received data: %w", err)
 	}

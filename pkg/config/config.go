@@ -7,17 +7,61 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/automatedhome/solar/pkg/evok"
 	"github.com/automatedhome/solar/pkg/homeassistant"
-	types "github.com/automatedhome/solar/pkg/types"
 	"gopkg.in/yaml.v2"
 )
 
-var settings types.Settings
-var actuators types.Actuators
-var sensors types.Sensors
+type Config struct {
+	Settings  Settings
+	Actuators evok.Actuators
+	Sensors   evok.Sensors
+}
 
-func ExposeOnHTTP(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(settings)
+type Settings struct {
+	SolarCritical homeassistant.Entity `yaml:"solarCritical"`
+	SolarOn       homeassistant.Entity `yaml:"solarOn"`
+	SolarOff      homeassistant.Entity `yaml:"solarOff"`
+	TankMax       homeassistant.Entity `yaml:"tankMax"`
+	Flow          FlowSettings         `yaml:"flow"`
+}
+
+type FlowSettings struct {
+	DutyMin homeassistant.Entity `yaml:"dutyMin"`
+	TempMin homeassistant.Entity `yaml:"tempMin"`
+	DutyMax homeassistant.Entity `yaml:"dutyMax"`
+	TempMax homeassistant.Entity `yaml:"tempMax"`
+}
+
+func NewConfig(cfgFile string) (*Config, error) {
+	log.Printf("Reading configuration from %s", cfgFile)
+	data, err := ioutil.ReadFile(cfgFile)
+	if err != nil {
+		return nil, fmt.Errorf("file reading error: %w", err)
+	}
+
+	var config struct {
+		Settings  Settings       `yaml:"settings"`
+		Actuators evok.Actuators `yaml:"actuators"`
+		Sensors   evok.Sensors   `yaml:"sensors"`
+	}
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
+		return nil, fmt.Errorf("error: %w", err)
+	}
+
+	log.Printf("Reading following config from config file: %#v", config)
+
+	client := &Config{
+		Settings:  config.Settings,
+		Actuators: config.Actuators,
+		Sensors:   config.Sensors,
+	}
+
+	return client, nil
+}
+
+func (c *Config) ExposeSettingsOnHTTP(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(c.Settings)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -30,73 +74,40 @@ func ExposeOnHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ReadConfigFromFile(cfg string) {
-	log.Printf("Reading configuration from %s", cfg)
-	data, err := ioutil.ReadFile(cfg)
-	if err != nil {
-		log.Fatalf("File reading error: %v", err)
-		return
-	}
-
-	var config struct {
-		Settings  types.Settings  `yaml:"settings"`
-		Actuators types.Actuators `yaml:"actuators"`
-		Sensors   types.Sensors   `yaml:"sensors"`
-	}
-	if err := yaml.UnmarshalStrict(data, &config); err != nil {
-		log.Fatalf("error: %v", err)
-	}
-
-	log.Printf("Reading following config from config file: %#v", config)
-
-	settings = config.Settings
-	actuators = config.Actuators
-	sensors = config.Sensors
-}
-
-func UpdateValuesFromHomeAssistant(hassClient *homeassistant.Client) error {
+func (c *Config) ReadValuesFromHomeAssistant(hassClient *homeassistant.Client) error {
 	var errs []error
-	var err error
 
-	settings.SolarCritical.Value, err = hassClient.GetSingleValue(settings.SolarCritical.EntityID)
+	err := c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.SolarCritical)
 	if err != nil {
-		log.Printf("Could not get setting for solar critical temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.SolarOn.Value, err = hassClient.GetSingleValue(settings.SolarOn.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.SolarOn)
 	if err != nil {
-		log.Printf("Could not get setting for solar on temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.SolarOff.Value, err = hassClient.GetSingleValue(settings.SolarOff.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.SolarOff)
 	if err != nil {
-		log.Printf("Could not get setting for solar off temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.TankMax.Value, err = hassClient.GetSingleValue(settings.TankMax.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.TankMax)
 	if err != nil {
-		log.Printf("Could not get setting for tank max temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
 
-	settings.Flow.DutyMin.Value, err = hassClient.GetSingleValue(settings.Flow.DutyMin.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.Flow.DutyMin)
 	if err != nil {
-		log.Printf("Could not get setting for flow duty min from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.DutyMax.Value, err = hassClient.GetSingleValue(settings.Flow.DutyMax.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.Flow.DutyMax)
 	if err != nil {
-		log.Printf("Could not get setting for flow duty max from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.TempMin.Value, err = hassClient.GetSingleValue(settings.Flow.TempMin.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.Flow.TempMin)
 	if err != nil {
-		log.Printf("Could not get setting for flow temp min from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.TempMax.Value, err = hassClient.GetSingleValue(settings.Flow.TempMax.EntityID)
+	err = c.getSingleValueFromHomeAssistant(hassClient, &c.Settings.Flow.TempMax)
 	if err != nil {
-		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
 
@@ -107,14 +118,24 @@ func UpdateValuesFromHomeAssistant(hassClient *homeassistant.Client) error {
 	return nil
 }
 
-func GetSensors() *types.Sensors {
-	return &sensors
+func (c *Config) getSingleValueFromHomeAssistant(hassClient *homeassistant.Client, entity *homeassistant.Entity) error {
+	value, err := hassClient.GetSingleValue(entity.EntityID)
+	if err != nil {
+		log.Printf("Could not get setting for entity %s from Home Assistant: %#v", entity.EntityID, err)
+		return err
+	}
+	entity.Value = value
+	return nil
 }
 
-func GetActuators() *types.Actuators {
-	return &actuators
+func (c *Config) GetSensors() *evok.Sensors {
+	return &c.Sensors
 }
 
-func GetSettings() *types.Settings {
-	return &settings
+func (c *Config) GetActuators() *evok.Actuators {
+	return &c.Actuators
+}
+
+func (c *Config) GetSettings() *Settings {
+	return &c.Settings
 }

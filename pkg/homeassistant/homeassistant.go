@@ -6,9 +6,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-
-	types "github.com/automatedhome/solar/pkg/types"
 )
+
+type Entity struct {
+	EntityID string  `json:"entity_id" yaml:"entity_id"`
+	State    string  `json:"state,omitempty" yaml:"state,omitempty"`
+	Value    float64 `json:"value,omitempty" yaml:"value,omitempty"`
+}
 
 type Client struct {
 	Address string
@@ -47,7 +51,7 @@ func (c *Client) GetSingleValue(entity string) (float64, error) {
 		return -1, fmt.Errorf("could not read response body: %w", err)
 	}
 
-	var data types.HomeAssistantEntity
+	var data Entity
 	if err := json.Unmarshal(body, &data); err != nil {
 		return -1, fmt.Errorf("could not parse received data: %w", err)
 	}

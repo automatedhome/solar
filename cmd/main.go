@@ -16,19 +16,19 @@ import (
 	"github.com/automatedhome/solar/pkg/config"
 	"github.com/automatedhome/solar/pkg/evok"
 	"github.com/automatedhome/solar/pkg/homeassistant"
-
-	types "github.com/automatedhome/solar/pkg/types"
 )
 
+type Status struct {
+	Mode  string `json:"mode"`
+	Since int64  `json:"since"`
+}
+
 var (
-	settings           types.Settings
-	sensors            types.Sensors
-	actuators          types.Actuators
-	circuitRunning     bool
-	invertFlow         bool
-	internalConfigFile string
-	lastPass           time.Time
-	systemStatus       types.Status
+	configs        *config.Config
+	circuitRunning bool
+	invertFlow     bool
+	lastPass       time.Time
+	systemStatus   Status
 
 	hassClient *homeassistant.Client
 )
@@ -68,19 +68,19 @@ func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := evok.SetSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(configs.GetActuators().Pump.Dev, configs.GetActuators().Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(configs.GetActuators().Switch.Dev, configs.GetActuators().Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
+		if err := setFlow(configs.GetSettings().Flow.DutyMin.Value); err != nil {
 			log.Println(err)
 			return
 		}
@@ -95,13 +95,13 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := evok.SetSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(configs.GetActuators().Pump.Dev, configs.GetActuators().Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(configs.GetActuators().Switch.Dev, configs.GetActuators().Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -123,22 +123,24 @@ func calculateFlow(delta float64) float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	if delta <= settings.Flow.TempMin.Value {
-		return settings.Flow.DutyMin.Value
+	flowCfg := configs.GetSettings().Flow
+
+	if delta <= flowCfg.TempMin.Value {
+		return flowCfg.DutyMin.Value
 	}
-	if delta >= settings.Flow.TempMax.Value {
-		return settings.Flow.DutyMax.Value
+	if delta >= flowCfg.TempMax.Value {
+		return flowCfg.DutyMax.Value
 	}
 	// Flow(ΔT) = a * ΔT + b
-	a := (settings.Flow.DutyMax.Value - settings.Flow.DutyMin.Value) / (settings.Flow.TempMax.Value - settings.Flow.TempMin.Value)
-	b := settings.Flow.DutyMin.Value - settings.Flow.TempMin.Value*a
+	a := (flowCfg.DutyMax.Value - flowCfg.DutyMin.Value) / (flowCfg.TempMax.Value - flowCfg.TempMin.Value)
+	b := flowCfg.DutyMin.Value - flowCfg.TempMin.Value*a
 	flow := a*delta + b
 
-	if flow > settings.Flow.DutyMax.Value {
-		flow = settings.Flow.DutyMax.Value
+	if flow > flowCfg.DutyMax.Value {
+		flow = flowCfg.DutyMax.Value
 	}
-	if flow < settings.Flow.DutyMin.Value {
-		flow = settings.Flow.DutyMin.Value
+	if flow < flowCfg.DutyMin.Value {
+		flow = flowCfg.DutyMin.Value
 	}
 	return flow
 }
@@ -150,7 +152,7 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 
-	if err := evok.SetSingleValue(actuators.Flow.Dev, actuators.Flow.Circuit, value); err != nil {
+	if err := evok.SetSingleValue(configs.GetActuators().Flow.Dev, configs.GetActuators().Flow.Circuit, value); err != nil {
 		log.Println(err)
 		return err
 	}
@@ -178,20 +180,6 @@ func httpStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func httpSensors(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(sensors)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, err = w.Write(js)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
 func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 	timeout := time.Duration(1 * time.Minute)
 	if lastPass.Add(timeout).After(time.Now()) {
@@ -203,7 +191,7 @@ func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 
 func init() {
 	circuitRunning = false
-	internalConfigFile = "/tmp/config.yaml"
+	internalConfigFile := "/tmp/config.yaml"
 
 	configFile := flag.String("config", "/config.yaml", "Provide configuration file with MQTT topic mappings")
 	invert := flag.Bool("invert", false, "Set this if flow regulator needs to work in 'inverted' mode (when 0V actuator is fully opened)")
@@ -230,20 +218,20 @@ func init() {
 		cfg = *configFile
 	}
 
-	config.ReadConfigFromFile(cfg)
+	config.NewConfig(cfg)
 
-	settings = *config.GetSettings()
-	actuators = *config.GetActuators()
-	sensors = *config.GetSensors()
-	evok.SetSensors(&sensors)
+	// Initialize sensors addresses. No data is passed at this stage, only configuration.
+	sensorsData := *configs.GetSensors()
+	// Pass sensors configuration to evok
+	evok.SetSensors(&sensorsData)
+	// Initialize sensors values
 	evok.InitializeSensorsValues()
 
 	// get configuration values
-	err := config.UpdateValuesFromHomeAssistant(hassClient)
+	err := configs.ReadValuesFromHomeAssistant(hassClient)
 	if err != nil {
 		log.Fatalf("Error getting settings: %v", err)
 	}
-	settings = *config.GetSettings()
 
 	setStatus("startup")
 
@@ -256,11 +244,11 @@ func main() {
 		// Expose metrics
 		http.Handle("/metrics", promhttp.Handler())
 		// Expose config
-		http.HandleFunc("/config", config.ExposeOnHTTP)
+		http.HandleFunc("/config", configs.ExposeSettingsOnHTTP)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
 		// Expose current sensors data
-		http.HandleFunc("/sensors", httpSensors)
+		http.HandleFunc("/sensors", evok.ExposeSensorsOnHTTP)
 		// Expose healthcheck
 		http.HandleFunc("/health", httpHealthCheck)
 		err := http.ListenAndServe(":7001", nil)
@@ -273,8 +261,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			config.UpdateValuesFromHomeAssistant(hassClient)
-			settings = *config.GetSettings()
+			configs.ReadValuesFromHomeAssistant(hassClient)
 		}
 	}()
 
@@ -289,19 +276,22 @@ func main() {
 		time.Sleep(5 * time.Second)
 		lastPass = time.Now()
 
-		delta = (sensors.SolarUp.Value+sensors.SolarOut.Value)/2 - sensors.SolarIn.Value
+		s := evok.GetSensors()
+		cfg := configs.GetSettings()
+
+		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		controlDelta.Set(delta)
 
-		if sensors.SolarUp.Value >= settings.SolarCritical.Value {
+		if s.SolarUp.Value >= cfg.SolarCritical.Value {
 			setStatus("failsafe shutdown")
-			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", sensors.SolarUp.Value))
+			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", s.SolarUp.Value))
 			failsafeTotal.Inc()
 			continue
 		}
 
-		if sensors.TankUp.Value > settings.TankMax.Value {
+		if s.TankUp.Value > cfg.TankMax.Value {
 			setStatus("tank filled")
-			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", sensors.TankUp.Value))
+			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", s.TankUp.Value))
 			tankfullTotal.Inc()
 			continue
 		}
@@ -315,9 +305,9 @@ func main() {
 			continue
 		}
 
-		if delta > settings.SolarOff.Value {
+		if delta > cfg.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta >= settings.SolarOn.Value && sensors.SolarUp.Value > sensors.SolarOut.Value {
+			if delta >= cfg.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
 				setStatus("working")
 				start()
 			}
@@ -331,7 +321,7 @@ func main() {
 			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode")
 				setStatus("reduced mode")
-				if err := setFlow(settings.Flow.DutyMin.Value); err != nil {
+				if err := setFlow(cfg.Flow.DutyMin.Value); err != nil {
 					log.Println(err)
 				} else {
 					reducedMode = true

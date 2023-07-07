@@ -1,9 +1,15 @@
 ---
 #reduced_heat_exchange: 30
 actuators:
-  pump: "evok/relay/3/set"
-  switch: "evok/relay/2/set"
-  flow: "evok/ao/1/set"
+  pump:
+    dev: "relay"
+    circuit: "3"
+  switch:
+    dev: "relay"
+    circuit: "2"
+  flow:
+    dev: "ao"
+    circuit: "1"
 sensors:
   solarUp:
     dev: "ai"

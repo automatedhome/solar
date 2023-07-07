@@ -108,8 +108,6 @@ func handleWebsocketMessage(address string) {
 			log.Printf("Could not parse received data: %#v", err)
 		}
 
-		log.Printf("Received data: %#v\n Parsed as: %#v", string(payload[:]), inputs) //FIXME: Remove this after debugging
-
 		parseEvokData(inputs)
 	}
 }
@@ -131,13 +129,10 @@ func parseEvokData(data []types.EvokDevice) {
 		switch msg.Circuit {
 		case sensors.SolarIn.Circuit:
 			sensors.SolarIn.Value = msg.Value
-			log.Printf("SolarIn: %v", msg.Value)
 		case sensors.SolarOut.Circuit:
 			sensors.SolarOut.Value = msg.Value
-			log.Printf("SolarOut: %v", msg.Value)
 		case sensors.TankUp.Circuit:
 			sensors.TankUp.Value = msg.Value
-			log.Printf("TankUp: %v", msg.Value)
 		}
 	}
 }

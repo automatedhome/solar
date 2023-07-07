@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,25 +15,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v2"
 
-	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
-
+	"github.com/automatedhome/solar/pkg/evok"
+	"github.com/automatedhome/solar/pkg/homeassistant"
 	types "github.com/automatedhome/solar/pkg/types"
 )
 
 var (
-	config               types.Config
-	settings             types.Settings
-	sensors              types.Sensors
-	actuators            types.Actuators
-	circuitRunning       bool
-	invertFlow           bool
-	internalConfigFile   string
-	lastPass             time.Time
-	systemStatus         types.Status
-	evokAddress          string
-	homeAssistantAddress string
-	homeAssistantToken   string
+	config             types.Config
+	settings           types.Settings
+	sensors            types.Sensors
+	actuators          types.Actuators
+	circuitRunning     bool
+	invertFlow         bool
+	internalConfigFile string
+	lastPass           time.Time
+	systemStatus       types.Status
 )
 
 var httpClient = &http.Client{}
@@ -70,217 +63,49 @@ var (
 		Name: "solar_temperature_delta_celsius",
 		Help: "Temperature delta used for setting flow rate",
 	})
-	solarPanelVoltage = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "solar_panel_voltage_volts",
-		Help: "Voltage reported by solar panel temperature sensor",
-	})
-	solarPanelTemperature = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "solar_panel_temperature_celsius",
-		Help: "Temperature of solar panel",
-	})
 )
-
-func handleWebsocketMessage(address string) {
-	fmt.Printf("Connecting to EVOK at %s\n", address)
-
-	conn, _, _, err := ws.DefaultDialer.Dial(context.TODO(), "ws://"+evokAddress+"/ws")
-	if err != nil {
-		panic(fmt.Sprintf("Connecting to EVOK failed: %v", err))
-	}
-	defer conn.Close()
-
-	msg := "{\"cmd\":\"filter\", \"devices\":[\"ai\",\"temp\"]}"
-	//msg := "{\"cmd\":\"all\"}" // FIXME: This is a temporary hack to get all data from EVOK
-	if err = wsutil.WriteClientMessage(conn, ws.OpText, []byte(msg)); err != nil {
-		panic("Sending websocket message to EVOK failed: " + err.Error())
-	}
-
-	var inputs []types.EvokDevice
-	for {
-		payload, err := wsutil.ReadServerText(conn)
-		if err != nil {
-			log.Printf("Received incorrect data: %#v", err)
-		}
-
-		if err := json.Unmarshal(payload, &inputs); err != nil {
-			log.Printf("Could not parse received data: %#v", err)
-		}
-
-		parseEvokData(inputs)
-	}
-}
-
-func parseEvokData(data []types.EvokDevice) {
-	for _, msg := range data {
-		if msg.Circuit == sensors.SolarUp.Circuit && msg.Dev == sensors.SolarUp.Dev {
-			temp := calculateTemperature(msg.Value)
-			sensors.SolarUp.Value = temp
-			solarPanelTemperature.Set(temp)
-			solarPanelVoltage.Set(msg.Value)
-			continue
-		}
-
-		if msg.Dev != "temp" {
-			continue
-		}
-
-		switch msg.Circuit {
-		case sensors.SolarIn.Circuit:
-			sensors.SolarIn.Value = msg.Value
-		case sensors.SolarOut.Circuit:
-			sensors.SolarOut.Value = msg.Value
-		case sensors.TankUp.Circuit:
-			sensors.TankUp.Value = msg.Value
-		}
-	}
-}
-
-func getSingleEvokValue(dev, circuit string) (float64, error) {
-	address := fmt.Sprintf("http://%s/rest/%s/%s", evokAddress, dev, circuit)
-
-	resp, err := http.Get(address)
-	if err != nil {
-		log.Printf("Could not get data from EVOK: %#v", err)
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Could not read response body: %#v", err)
-		return 0, err
-	}
-
-	var data types.EvokDevice
-	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Could not parse received data: %#v", err)
-		return 0, err
-	}
-
-	return data.Value, nil
-}
-
-func setEvokSingleValue(dev, circuit string, value float64) error {
-	address := fmt.Sprintf("http://%s/json/%s/%s", evokAddress, dev, circuit)
-
-	stringValue := "0"
-	if dev == "ao" {
-		stringValue = fmt.Sprintf("%.2f", value)
-	} else {
-		stringValue = fmt.Sprintf("%.0f", value)
-	}
-
-	jsonValue, _ := json.Marshal(
-		struct {
-			Value string `json:"value"`
-		}{
-			stringValue,
-		},
-	)
-
-	req, err := http.NewRequest("POST", address, bytes.NewBuffer(jsonValue))
-	if err != nil {
-		log.Printf("Could not create request: %#v", err)
-		return err
-	}
-
-	req.Header.Add("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Printf("Could not set circuit state in EVOK: %#v", err)
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	return nil
-}
-
-func getSingleHomeAssistantValue(entity string) (float64, error) {
-	address := fmt.Sprintf("http://%s/api/states/%s", homeAssistantAddress, entity)
-
-	req, err := http.NewRequest("GET", address, nil)
-	if err != nil {
-		log.Printf("Could not create request: %#v", err)
-		return -1, err
-	}
-
-	if homeAssistantToken != "" {
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", homeAssistantToken))
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Printf("Could not get data from Home Assistant: %#v", err)
-		return -1, err
-	}
-
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Could not read response body: %#v", err)
-		return -1, err
-	}
-
-	var data types.HomeAssistantEntity
-	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("Could not parse received data: %#v", err)
-		return -1, err
-	}
-
-	// Convert string value to float64
-	data.Value, err = strconv.ParseFloat(data.State, 64)
-	if err != nil {
-		log.Printf("Could not convert value to float64: %#v", err)
-		return -1, err
-	}
-
-	return data.Value, nil
-}
 
 func getSettings() error {
 	var errs []error
 	var err error
 
-	settings.SolarCritical.Value, err = getSingleHomeAssistantValue(settings.SolarCritical.EntityID)
+	settings.SolarCritical.Value, err = homeassistant.GetSingleValue(settings.SolarCritical.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar critical temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.SolarOn.Value, err = getSingleHomeAssistantValue(settings.SolarOn.EntityID)
+	settings.SolarOn.Value, err = homeassistant.GetSingleValue(settings.SolarOn.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar on temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.SolarOff.Value, err = getSingleHomeAssistantValue(settings.SolarOff.EntityID)
+	settings.SolarOff.Value, err = homeassistant.GetSingleValue(settings.SolarOff.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for solar off temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.TankMax.Value, err = getSingleHomeAssistantValue(settings.TankMax.EntityID)
+	settings.TankMax.Value, err = homeassistant.GetSingleValue(settings.TankMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for tank max temperature from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
 
-	settings.Flow.DutyMin.Value, err = getSingleHomeAssistantValue(settings.Flow.DutyMin.EntityID)
+	settings.Flow.DutyMin.Value, err = homeassistant.GetSingleValue(settings.Flow.DutyMin.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow duty min from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.DutyMax.Value, err = getSingleHomeAssistantValue(settings.Flow.DutyMax.EntityID)
+	settings.Flow.DutyMax.Value, err = homeassistant.GetSingleValue(settings.Flow.DutyMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow duty max from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.TempMin.Value, err = getSingleHomeAssistantValue(settings.Flow.TempMin.EntityID)
+	settings.Flow.TempMin.Value, err = homeassistant.GetSingleValue(settings.Flow.TempMin.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow temp min from Home Assistant: %#v", err)
 		errs = append(errs, err)
 	}
-	settings.Flow.TempMax.Value, err = getSingleHomeAssistantValue(settings.Flow.TempMax.EntityID)
+	settings.Flow.TempMax.Value, err = homeassistant.GetSingleValue(settings.Flow.TempMax.EntityID)
 	if err != nil {
 		log.Printf("Could not get setting for flow temp max from Home Assistant: %#v", err)
 		errs = append(errs, err)
@@ -293,38 +118,17 @@ func getSettings() error {
 	return nil
 }
 
-func getSensorValues() {
-	var err error
-	// initialize sensors
-	sensors.SolarUp.Value, err = getSingleEvokValue(sensors.SolarUp.Dev, sensors.SolarUp.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.SolarIn.Value, err = getSingleEvokValue(sensors.SolarIn.Dev, sensors.SolarIn.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.SolarOut.Value, err = getSingleEvokValue(sensors.SolarOut.Dev, sensors.SolarOut.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-	sensors.TankUp.Value, err = getSingleEvokValue(sensors.TankUp.Dev, sensors.TankUp.Circuit)
-	if err != nil {
-		log.Fatalf("error: %v", err)
-	}
-}
-
 func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := setEvokSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setEvokSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
@@ -345,13 +149,13 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := setEvokSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(actuators.Pump.Dev, actuators.Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setEvokSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(actuators.Switch.Dev, actuators.Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -360,12 +164,6 @@ func start() {
 		circuitRunningMetric.Set(1)
 		time.Sleep(1 * time.Second)
 	}
-}
-
-func calculateTemperature(voltage float64) float64 {
-	// volts * (Tmax - Tmin) / Vref + Tmin
-	// volts * (200 - 0) / 12 + 0
-	return voltage*(200-0)/12 + 0
 }
 
 // flow can range from 0 to 10.
@@ -406,7 +204,7 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 
-	if err := setEvokSingleValue(actuators.Flow.Dev, actuators.Flow.Circuit, value); err != nil {
+	if err := evok.SetSingleValue(actuators.Flow.Dev, actuators.Flow.Circuit, value); err != nil {
 		log.Println(err)
 		return err
 	}
@@ -482,9 +280,12 @@ func init() {
 	htoken := flag.String("homeassistant-token", "", "HomeAssistant API token")
 	flag.Parse()
 
-	evokAddress = *eaddr
-	homeAssistantAddress = *haddr
-	homeAssistantToken = *htoken
+	// Set EVOK address
+	evok.SetAddress(*eaddr)
+
+	// Set Home Assistant address and token
+	homeassistant.SetAddress(*haddr)
+	homeassistant.SetToken(*htoken)
 
 	invertFlow = *invert
 	if invertFlow {
@@ -513,15 +314,14 @@ func init() {
 	settings = config.Settings
 	actuators = config.Actuators
 	sensors = config.Sensors
+	evok.SetSensors(&sensors)
+	evok.InitializeSensorsValues()
 
 	// get configuration values
 	err = getSettings()
 	if err != nil {
 		log.Fatalf("Error getting settings: %v", err)
 	}
-
-	// initialize sensors
-	getSensorValues()
 
 	setStatus("startup")
 
@@ -555,7 +355,7 @@ func main() {
 		}
 	}()
 
-	go handleWebsocketMessage(evokAddress)
+	go evok.HandleWebsocketConnection()
 
 	// reductionDuration := time.Duration(config.ReducedTime) * time.Minute
 	reductionDuration := 30 * time.Minute

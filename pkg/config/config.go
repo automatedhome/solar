@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var internalConfigFile = "/tmp/config.yaml"
+var internalConfigFile = "/config.yaml"
 
 type Config struct {
 	Settings  homeassistant.Settings

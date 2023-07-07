@@ -246,6 +246,8 @@ func init() {
 
 	// Initialize sensors addresses. No data is passed at this stage, only configuration.
 	sensorsData := *configs.GetSensors()
+
+	log.Printf("Initializing sensors: %+v\n", sensorsData)
 	// Pass sensors configuration to evok
 	evok.SetSensors(&sensorsData)
 	// Initialize sensors values
@@ -312,7 +314,7 @@ func main() {
 		lastPass = time.Now()
 
 		s := evok.GetSensors()
-		cfg := configs.GetSettings()
+		cfg := *configs.GetSettings()
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		promMetrics.controlDelta.Set(delta)

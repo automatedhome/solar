@@ -40,24 +40,14 @@ func NewConfig(cfgFile string) (*Config, error) {
 		return nil, fmt.Errorf("file reading error: %w", err)
 	}
 
-	var config struct {
-		Settings  Settings       `yaml:"settings"`
-		Actuators evok.Actuators `yaml:"actuators"`
-		Sensors   evok.Sensors   `yaml:"sensors"`
-	}
+	var config Config
 	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
 
 	log.Printf("Reading following config from config file: %#v", config)
 
-	client := &Config{
-		Settings:  config.Settings,
-		Actuators: config.Actuators,
-		Sensors:   config.Sensors,
-	}
-
-	return client, nil
+	return &config, nil
 }
 
 func (c *Config) ExposeSettingsOnHTTP(w http.ResponseWriter, r *http.Request) {

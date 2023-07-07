@@ -24,7 +24,7 @@ type Status struct {
 
 var (
 	promMetrics    *metrics
-	configs        *config.Config
+	cfg            *config.Config
 	circuitRunning bool
 	invertFlow     bool
 	lastPass       time.Time
@@ -89,19 +89,19 @@ func stop(reason string) {
 	if circuitRunning {
 		log.Println("Stopping: " + reason)
 
-		if err := evok.SetSingleValue(configs.GetActuators().Pump.Dev, configs.GetActuators().Pump.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(cfg.GetActuators().Pump.Dev, cfg.GetActuators().Pump.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(configs.GetActuators().Switch.Dev, configs.GetActuators().Switch.Circuit, 0); err != nil {
+		if err := evok.SetSingleValue(cfg.GetActuators().Switch.Dev, cfg.GetActuators().Switch.Circuit, 0); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := setFlow(configs.GetSettings().Flow.DutyMin.Value); err != nil {
+		if err := setFlow(cfg.GetSettings().Flow.DutyMin.Value); err != nil {
 			log.Println(err)
 			return
 		}
@@ -116,13 +116,13 @@ func start() {
 	if !circuitRunning {
 		log.Println("Detected optimal conditions. Harvesting.")
 
-		if err := evok.SetSingleValue(configs.GetActuators().Pump.Dev, configs.GetActuators().Pump.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(cfg.GetActuators().Pump.Dev, cfg.GetActuators().Pump.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
 		time.Sleep(1 * time.Second)
 
-		if err := evok.SetSingleValue(configs.GetActuators().Switch.Dev, configs.GetActuators().Switch.Circuit, 1); err != nil {
+		if err := evok.SetSingleValue(cfg.GetActuators().Switch.Dev, cfg.GetActuators().Switch.Circuit, 1); err != nil {
 			log.Println(err)
 			return
 		}
@@ -144,7 +144,7 @@ func calculateFlow(delta float64) float64 {
 	// |____/
 	// |                  [ΔT]
 	// +------------------->
-	flowCfg := configs.GetSettings().Flow
+	flowCfg := cfg.GetSettings().Flow
 
 	if delta <= flowCfg.TempMin.Value {
 		return flowCfg.DutyMin.Value
@@ -173,7 +173,7 @@ func setFlow(value float64) error {
 		value = 10.0 - value
 	}
 
-	if err := evok.SetSingleValue(configs.GetActuators().Flow.Dev, configs.GetActuators().Flow.Circuit, value); err != nil {
+	if err := evok.SetSingleValue(cfg.GetActuators().Flow.Dev, cfg.GetActuators().Flow.Circuit, value); err != nil {
 		log.Println(err)
 		return err
 	}
@@ -232,20 +232,21 @@ func init() {
 		log.Println("Setting inverted mode for actuator - higher voltage causes less flow")
 	}
 
-	var cfg string
+	var cfgFile string
 	if _, err := os.Stat(internalConfigFile); err == nil {
-		cfg = internalConfigFile
+		cfgFile = internalConfigFile
 	} else {
-		cfg = *configFile
+		cfgFile = *configFile
 	}
 
-	configs, err := config.NewConfig(cfg)
+	var err error
+	cfg, err = config.NewConfig(cfgFile)
 	if err != nil {
 		log.Fatalf("Error synthesizing configuration: %v", err)
 	}
 
 	// Initialize sensors addresses. No data is passed at this stage, only configuration.
-	sensorsData := *configs.GetSensors()
+	sensorsData := *cfg.GetSensors()
 
 	log.Printf("Initializing sensors: %+v\n", sensorsData)
 	// Pass sensors configuration to evok
@@ -257,7 +258,7 @@ func init() {
 	}
 
 	// get configuration values
-	err = configs.ReadValuesFromHomeAssistant(hassClient)
+	err = cfg.ReadValuesFromHomeAssistant(hassClient)
 	if err != nil {
 		log.Fatalf("Error getting settings from HomeAssistant: %v", err)
 	}
@@ -278,7 +279,7 @@ func main() {
 		// Expose metrics
 		http.Handle("/metrics", promHandler)
 		// Expose config
-		http.HandleFunc("/config", configs.ExposeSettingsOnHTTP)
+		http.HandleFunc("/config", cfg.ExposeSettingsOnHTTP)
 		// Report current status
 		http.HandleFunc("/status", httpStatus)
 		// Expose current sensors data
@@ -295,7 +296,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			err := configs.ReadValuesFromHomeAssistant(hassClient)
+			err := cfg.ReadValuesFromHomeAssistant(hassClient)
 			if err != nil {
 				log.Printf("Error getting settings from HomeAssistant: %v", err)
 			}
@@ -314,19 +315,22 @@ func main() {
 		lastPass = time.Now()
 
 		s := evok.GetSensors()
-		cfg := *configs.GetSettings()
+
+		log.Printf("Current sensors config: %+v\n", cfg.GetSensors())
+
+		cfgData := cfg.GetSettings()
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		promMetrics.controlDelta.Set(delta)
 
-		if s.SolarUp.Value >= cfg.SolarCritical.Value {
+		if s.SolarUp.Value >= cfgData.SolarCritical.Value {
 			setStatus("failsafe shutdown")
 			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", s.SolarUp.Value))
 			promMetrics.failsafeTotal.Inc()
 			continue
 		}
 
-		if s.TankUp.Value > cfg.TankMax.Value {
+		if s.TankUp.Value > cfgData.TankMax.Value {
 			setStatus("tank filled")
 			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", s.TankUp.Value))
 			promMetrics.tankfullTotal.Inc()
@@ -342,9 +346,9 @@ func main() {
 			continue
 		}
 
-		if delta > cfg.SolarOff.Value {
+		if delta > cfgData.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta >= cfg.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
+			if delta >= cfgData.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
 				setStatus("working")
 				start()
 			}
@@ -358,7 +362,7 @@ func main() {
 			if !reducedMode {
 				log.Println("Entering reduced heat exchange mode")
 				setStatus("reduced mode")
-				if err := setFlow(cfg.Flow.DutyMin.Value); err != nil {
+				if err := setFlow(cfgData.Flow.DutyMin.Value); err != nil {
 					log.Println(err)
 				} else {
 					reducedMode = true

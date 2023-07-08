@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type Settings struct {
@@ -41,12 +42,12 @@ type Client struct {
 }
 
 var (
-	hassRequestsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	hassRequestsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "homeassistant_settups_update_total",
 		Help:      "Total number of requests to update settings from Home Assistant",
 	})
-	hassRequestsErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	hassRequestsErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "homeassistant_settups_update_errors_total",
 		Help:      "Total number of failed requests to update settings from Home Assistant",

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/automatedhome/solar/pkg/config"
@@ -35,42 +36,42 @@ var (
 )
 
 var (
-	heatEscapeTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	heatEscapeTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "heat_escape_total",
 		Help:      "Increase when heat escape system kicked in",
 	})
-	failsafeTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	failsafeTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "failsafe_total",
 		Help:      "Increase when failsafe system kicked in",
 	})
-	tankfullTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	tankfullTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "tank_full_total",
 		Help:      "Increase when heating stopped due to tank being full",
 	})
-	reducedModeMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+	reducedModeMetric = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "solar",
 		Name:      "reduced_mode",
 		Help:      "Solar circut is operating in reduced mode",
 	})
-	flowRate = prometheus.NewGauge(prometheus.GaugeOpts{
+	flowRate = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "solar",
 		Name:      "flow_rate_volts",
 		Help:      "Flow rate in volts",
 	})
-	circuitRunningMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+	circuitRunningMetric = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "solar",
 		Name:      "circuit_running_binary",
 		Help:      "Registers when solar control circuit is running",
 	})
-	controlDelta = prometheus.NewGauge(prometheus.GaugeOpts{
+	controlDelta = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "solar",
 		Name:      "temperature_delta_celsius",
 		Help:      "Temperature delta used for setting flow rate",
 	})
-	emergencyTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	emergencyTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "solar",
 		Name:      "emergency_total",
 		Help:      "Increase when emergency shutoff is triggered",

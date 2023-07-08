@@ -42,7 +42,7 @@ type Client struct {
 	wsConn      net.Conn
 }
 
-type EvokValue struct {
+type evokValue struct {
 	Value interface{} `json:"value"`
 }
 
@@ -218,10 +218,10 @@ func (c *Client) SetValue(dev, circuit string, value float64) error {
 	var jsonValue []byte
 	if dev == "relay" {
 		// There is a bug in EVOK that requires relay values to be sent as strings
-		data := EvokValue{Value: fmt.Sprintf("%.0f", value)}
+		data := evokValue{Value: fmt.Sprintf("%.0f", value)}
 		jsonValue, _ = json.Marshal(data)
 	} else {
-		data := EvokValue{Value: value}
+		data := evokValue{Value: value}
 		jsonValue, _ = json.Marshal(data)
 	}
 

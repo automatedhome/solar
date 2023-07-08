@@ -94,56 +94,52 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 }
 
 func stop(reason string) {
-	if circuitRunning {
-		log.Println("Stopping: " + reason)
+	log.Println("Stopping: " + reason)
 
-		act := evokClient.GetActuators()
+	act := evokClient.GetActuators()
 
-		if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 0); err != nil {
-			log.Println(err)
-			return
-		}
-		time.Sleep(1 * time.Second)
-
-		if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 0); err != nil {
-			log.Println(err)
-			return
-		}
-		time.Sleep(1 * time.Second)
-
-		minFlow := hass.GetSettings().Flow.DutyMin.Value
-		if err := setFlow(minFlow); err != nil {
-			log.Println(err)
-			return
-		}
-		time.Sleep(1 * time.Second)
-
-		circuitRunning = false
-		promMetrics.circuitRunning.Set(0)
+	if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 0); err != nil {
+		log.Println(err)
+		return
 	}
+	time.Sleep(1 * time.Second)
+
+	if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 0); err != nil {
+		log.Println(err)
+		return
+	}
+	time.Sleep(1 * time.Second)
+
+	minFlow := hass.GetSettings().Flow.DutyMin.Value
+	if err := setFlow(minFlow); err != nil {
+		log.Println(err)
+		return
+	}
+	time.Sleep(1 * time.Second)
+
+	circuitRunning = false
+	promMetrics.circuitRunning.Set(0)
 }
 
 func start() {
-	if !circuitRunning {
-		log.Println("Detected optimal conditions. Harvesting.")
+	log.Println("Detected optimal conditions. Harvesting.")
 
-		act := evokClient.GetActuators()
+	act := evokClient.GetActuators()
 
-		if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 1); err != nil {
-			log.Println(err)
-			return
-		}
-		time.Sleep(1 * time.Second)
-
-		if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 1); err != nil {
-			log.Println(err)
-			return
-		}
-
-		circuitRunning = true
-		promMetrics.circuitRunning.Set(1)
-		time.Sleep(1 * time.Second)
+	if err := evokClient.SetValue(act.Pump.Dev, act.Pump.Circuit, 1); err != nil {
+		log.Println(err)
+		return
 	}
+	time.Sleep(1 * time.Second)
+
+	if err := evokClient.SetValue(act.Switch.Dev, act.Switch.Circuit, 1); err != nil {
+		log.Println(err)
+		return
+	}
+
+	circuitRunning = true
+	promMetrics.circuitRunning.Set(1)
+	time.Sleep(1 * time.Second)
 }
 
 // flow can range from 0 to 10.
@@ -324,7 +320,7 @@ func main() {
 		cfg := hass.GetSettings()
 		log.Printf("Current settings: %+v", cfg)
 
-		if cfg.SolarEmergency.Value != 0 {
+		if cfg.SolarEmergency.Value != 0 && circuitRunning {
 			setStatus("emergency shutoff")
 			stop("Emergency shutoff")
 			promMetrics.emergencyTotal.Inc()
@@ -335,14 +331,14 @@ func main() {
 		systemStatus.Delta = delta
 		promMetrics.controlDelta.Set(delta)
 
-		if s.SolarUp.Value >= cfg.SolarCritical.Value {
+		if s.SolarUp.Value >= cfg.SolarCritical.Value && circuitRunning {
 			setStatus("failsafe shutdown")
 			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", s.SolarUp.Value))
 			promMetrics.failsafeTotal.Inc()
 			continue
 		}
 
-		if s.TankUp.Value > cfg.TankMax.Value {
+		if s.TankUp.Value > cfg.TankMax.Value && circuitRunning {
 			setStatus("tank filled")
 			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", s.TankUp.Value))
 			promMetrics.tankfullTotal.Inc()
@@ -351,7 +347,7 @@ func main() {
 
 		// heat escape prevention. If delta is less than 0, then system is heating up solar panel
 		// calculation need to be based on formula: (solar+out)/2 - in
-		if delta < 0 {
+		if delta < 0 && circuitRunning {
 			setStatus("heat escape prevention mode")
 			stop(fmt.Sprintf("Heat escape prevention, delta: %f < 0", delta))
 			promMetrics.heatEscapeTotal.Inc()
@@ -360,7 +356,7 @@ func main() {
 
 		if delta > cfg.SolarOff.Value {
 			// if sensors.SolarUp.Value-sensors.SolarOut.Value > settings.SolarOn.Value {
-			if delta >= cfg.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value {
+			if delta >= cfg.SolarOn.Value && s.SolarUp.Value > s.SolarOut.Value && !circuitRunning {
 				setStatus("working")
 				start()
 			}
@@ -385,8 +381,10 @@ func main() {
 			// Delta SolarIn - SolarOut is too low.
 			reducedMode = false
 			promMetrics.reducedMode.Set(0)
-			setStatus("stopped")
-			stop(fmt.Sprintf("Temperature delta too low: %f", delta))
+			if circuitRunning {
+				setStatus("stopped")
+				stop(fmt.Sprintf("Temperature delta too low: %f", delta))
+			}
 		}
 	}
 }

@@ -20,6 +20,7 @@ type Status struct {
 	Mode  string  `json:"mode"`
 	Since int64   `json:"since"`
 	Delta float64 `json:"delta"`
+	Flow  float64 `json:"flow"`
 }
 
 var (
@@ -184,6 +185,7 @@ func setFlow(value float64) error {
 		return err
 	}
 
+	systemStatus.Flow = value
 	promMetrics.flowRate.Set(value)
 
 	return nil

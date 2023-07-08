@@ -42,6 +42,10 @@ type Client struct {
 	wsConn      net.Conn
 }
 
+type EvokValue struct {
+	Value interface{} `json:"value"`
+}
+
 func NewClient(address string, sensors Sensors, actuators Actuators) *Client {
 	return &Client{
 		Sensors:     sensors,
@@ -211,18 +215,15 @@ func (c *Client) getValue(dev, circuit string) (float64, error) {
 func (c *Client) SetValue(dev, circuit string, value float64) error {
 	address := fmt.Sprintf("%s/json/%s/%s", c.httpAddress, dev, circuit)
 
-	var stringValue string
-	if dev == "ao" {
-		stringValue = fmt.Sprintf("%.2f", value)
+	var jsonValue []byte
+	if dev == "relay" {
+		// There is a bug in EVOK that requires relay values to be sent as strings
+		data := EvokValue{Value: fmt.Sprintf("%.0f", value)}
+		jsonValue, _ = json.Marshal(data)
 	} else {
-		stringValue = fmt.Sprintf("%.0f", value)
+		data := EvokValue{Value: value}
+		jsonValue, _ = json.Marshal(data)
 	}
-
-	jsonValue, _ := json.Marshal(struct {
-		Value string `json:"value"`
-	}{
-		Value: stringValue,
-	})
 
 	req, err := http.NewRequest("POST", address, bytes.NewBuffer(jsonValue))
 	if err != nil {

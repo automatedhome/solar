@@ -270,7 +270,8 @@ func init() {
 
 	setStatus("startup")
 
-	stop("SYSTEM RESET")
+	//circuitRunning = true
+	//stop("SYSTEM RESET")
 }
 
 func main() {

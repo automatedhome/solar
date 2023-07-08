@@ -177,8 +177,11 @@ func calculateFlow(delta float64) float64 {
 
 func setFlow(value float64) error {
 	// FIXME: this is a workaround to scale down the flow to 0 - 10 range. Workaround is necessary as EVOK accepts only
-	// values from this range. Addtionally the flow value is rounded.
-	value = math.Round(value*10) / 100
+	// values from this range.
+	value = value / 10.0
+
+	// Round the flow value to 2 decimal places.
+	value = math.Round(value*100) / 100
 
 	// TODO: fix this lower in the chain as an actuator is an "inverted" type.
 	// Best fix would be to apply this transformation on actuator level. Sadly currently this is not possible without complicating setup.

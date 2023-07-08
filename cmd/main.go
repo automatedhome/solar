@@ -31,7 +31,8 @@ var (
 	lastPass       time.Time
 	systemStatus   Status
 
-	emergencyShutoff bool
+	// TODO: remove after fixing reading config from home assistant
+	emergencyShutoff float64 // Using float64 to avoid type conversion
 
 	hass       *homeassistant.Client
 	evokClient *evok.Client
@@ -275,7 +276,7 @@ func init() {
 	stop("SYSTEM RESET")
 
 	// TODO: Move this to home assistant
-	emergencyShutoff = false
+	emergencyShutoff = 0
 }
 
 func main() {
@@ -327,7 +328,8 @@ func main() {
 
 		cfg := hass.GetSettings()
 
-		if emergencyShutoff {
+		// if cfg.SolarEmergency.Value != 0 {
+		if emergencyShutoff != 0 {
 			setStatus("emergency shutoff")
 			stop("Emergency shutoff")
 			promMetrics.emergencyTotal.Inc()

@@ -152,6 +152,14 @@ func (c *Client) getSingleValue(entity string) (float64, error) {
 		return -1, fmt.Errorf("could not parse received data: %w", err)
 	}
 
+	// Special case for handling boolean values
+	switch data.State {
+	case "on":
+		return 1, nil
+	case "off":
+		return 0, nil
+	}
+
 	data.Value, err = strconv.ParseFloat(data.State, 64)
 	if err != nil {
 		return -1, fmt.Errorf("could not convert value to float64: %w", err)

@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Settings struct {
@@ -37,6 +39,19 @@ type Client struct {
 	Token    string
 	client   *http.Client
 }
+
+var (
+	hassRequestsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "homeassistant_settups_update_total",
+		Help:      "Total number of requests to update settings from Home Assistant",
+	})
+	hassRequestsErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "homeassistant_settups_update_errors_total",
+		Help:      "Total number of failed requests to update settings from Home Assistant",
+	})
+)
 
 func NewClient(address, token string, settings Settings) *Client {
 	return &Client{
@@ -127,8 +142,11 @@ func (c *Client) updateEntityValue(entity *Entity) error {
 func (c *Client) getSingleValue(entity string) (float64, error) {
 	address := fmt.Sprintf("http://%s/api/states/%s", c.Address, entity)
 
+	hassRequestsTotal.Inc()
+
 	req, err := http.NewRequest("GET", address, nil)
 	if err != nil {
+		hassRequestsErrorsTotal.Inc()
 		return -1, fmt.Errorf("could not create request: %w", err)
 	}
 
@@ -138,17 +156,20 @@ func (c *Client) getSingleValue(entity string) (float64, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		hassRequestsErrorsTotal.Inc()
 		return -1, fmt.Errorf("could not get data from Home Assistant: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		hassRequestsErrorsTotal.Inc()
 		return -1, fmt.Errorf("could not read response body: %w", err)
 	}
 
 	var data Entity
 	if err := json.Unmarshal(body, &data); err != nil {
+		hassRequestsErrorsTotal.Inc()
 		return -1, fmt.Errorf("could not parse received data: %w", err)
 	}
 
@@ -162,6 +183,7 @@ func (c *Client) getSingleValue(entity string) (float64, error) {
 
 	data.Value, err = strconv.ParseFloat(data.State, 64)
 	if err != nil {
+		hassRequestsErrorsTotal.Inc()
 		return -1, fmt.Errorf("could not convert value to float64: %w", err)
 	}
 

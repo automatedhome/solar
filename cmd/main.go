@@ -25,7 +25,6 @@ type Status struct {
 }
 
 var (
-	promMetrics    *metrics
 	circuitRunning bool
 	invertFlow     bool
 	lastPass       time.Time
@@ -35,63 +34,48 @@ var (
 	evokClient *evok.Client
 )
 
-type metrics struct {
-	heatEscapeTotal prometheus.Counter
-	failsafeTotal   prometheus.Counter
-	tankfullTotal   prometheus.Counter
-	reducedMode     prometheus.Gauge
-	flowRate        prometheus.Gauge
-	circuitRunning  prometheus.Gauge
-	controlDelta    prometheus.Gauge
-	emergencyTotal  prometheus.Counter
-}
-
-func newMetrics(reg prometheus.Registerer) *metrics {
-	m := &metrics{
-		heatEscapeTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "solar",
-			Name:      "heat_escape_total",
-			Help:      "Increase when heat escape system kicked in",
-		}),
-		failsafeTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "solar",
-			Name:      "failsafe_total",
-			Help:      "Increase when failsafe system kicked in",
-		}),
-		tankfullTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "solar",
-			Name:      "tank_full_total",
-			Help:      "Increase when heating stopped due to tank being full",
-		}),
-		reducedMode: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "solar",
-			Name:      "reduced_mode",
-			Help:      "Solar circut is operating in reduced mode",
-		}),
-		flowRate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "solar",
-			Name:      "flow_rate_volts",
-			Help:      "Flow rate in volts",
-		}),
-		circuitRunning: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "solar",
-			Name:      "circuit_running_binary",
-			Help:      "Registers when solar control circuit is running",
-		}),
-		controlDelta: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "solar",
-			Name:      "temperature_delta_celsius",
-			Help:      "Temperature delta used for setting flow rate",
-		}),
-		emergencyTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "solar",
-			Name:      "emergency_total",
-			Help:      "Increase when emergency shutoff is triggered",
-		}),
-	}
-
-	return m
-}
+var (
+	heatEscapeTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "heat_escape_total",
+		Help:      "Increase when heat escape system kicked in",
+	})
+	failsafeTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "failsafe_total",
+		Help:      "Increase when failsafe system kicked in",
+	})
+	tankfullTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "tank_full_total",
+		Help:      "Increase when heating stopped due to tank being full",
+	})
+	reducedModeMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "solar",
+		Name:      "reduced_mode",
+		Help:      "Solar circut is operating in reduced mode",
+	})
+	flowRate = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "solar",
+		Name:      "flow_rate_volts",
+		Help:      "Flow rate in volts",
+	})
+	circuitRunningMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "solar",
+		Name:      "circuit_running_binary",
+		Help:      "Registers when solar control circuit is running",
+	})
+	controlDelta = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "solar",
+		Name:      "temperature_delta_celsius",
+		Help:      "Temperature delta used for setting flow rate",
+	})
+	emergencyTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "solar",
+		Name:      "emergency_total",
+		Help:      "Increase when emergency shutoff is triggered",
+	})
+)
 
 func stop(reason string) {
 	log.Println("Stopping: " + reason)
@@ -118,7 +102,7 @@ func stop(reason string) {
 	time.Sleep(1 * time.Second)
 
 	circuitRunning = false
-	promMetrics.circuitRunning.Set(0)
+	circuitRunningMetric.Set(0)
 }
 
 func start() {
@@ -138,7 +122,7 @@ func start() {
 	}
 
 	circuitRunning = true
-	promMetrics.circuitRunning.Set(1)
+	circuitRunningMetric.Set(1)
 	time.Sleep(1 * time.Second)
 }
 
@@ -196,7 +180,7 @@ func setFlow(value float64) error {
 	}
 
 	systemStatus.Flow = value
-	promMetrics.flowRate.Set(value)
+	flowRate.Set(value)
 
 	return nil
 }
@@ -274,14 +258,9 @@ func init() {
 }
 
 func main() {
-	reg := prometheus.NewRegistry()
-	promMetrics = newMetrics(reg)
-
-	promHandler := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
-
 	go func() {
 		// Expose metrics
-		http.Handle("/metrics", promHandler)
+		http.Handle("/metrics", promhttp.Handler())
 		// Expose config
 		http.HandleFunc("/config", hass.ExposeSettingsOnHTTP)
 		// Report current status
@@ -325,25 +304,25 @@ func main() {
 		if cfg.SolarEmergency.Value != 0 && circuitRunning {
 			setStatus("emergency shutoff")
 			stop("Emergency shutoff")
-			promMetrics.emergencyTotal.Inc()
+			emergencyTotal.Inc()
 			continue
 		}
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		systemStatus.Delta = delta
-		promMetrics.controlDelta.Set(delta)
+		controlDelta.Set(delta)
 
 		if s.SolarUp.Value >= cfg.SolarCritical.Value && circuitRunning {
 			setStatus("failsafe shutdown")
 			stop(fmt.Sprintf("Critical Solar Temperature reached: %f degrees", s.SolarUp.Value))
-			promMetrics.failsafeTotal.Inc()
+			failsafeTotal.Inc()
 			continue
 		}
 
 		if s.TankUp.Value > cfg.TankMax.Value && circuitRunning {
 			setStatus("tank filled")
 			stop(fmt.Sprintf("Tank filled with hot water: %f degrees", s.TankUp.Value))
-			promMetrics.tankfullTotal.Inc()
+			tankfullTotal.Inc()
 			continue
 		}
 
@@ -352,7 +331,7 @@ func main() {
 		if delta < 0 && circuitRunning {
 			setStatus("heat escape prevention mode")
 			stop(fmt.Sprintf("Heat escape prevention, delta: %f < 0", delta))
-			promMetrics.heatEscapeTotal.Inc()
+			heatEscapeTotal.Inc()
 			continue
 		}
 
@@ -376,13 +355,13 @@ func main() {
 					log.Println(err)
 				} else {
 					reducedMode = true
-					promMetrics.reducedMode.Set(1)
+					reducedModeMetric.Set(1)
 				}
 			}
 		} else {
 			// Delta SolarIn - SolarOut is too low.
 			reducedMode = false
-			promMetrics.reducedMode.Set(0)
+			reducedModeMetric.Set(0)
 			if circuitRunning {
 				setStatus("stopped")
 				stop(fmt.Sprintf("Temperature delta too low: %f", delta))

@@ -43,14 +43,12 @@ type Client struct {
 }
 
 func NewClient(address string, sensors Sensors, actuators Actuators) *Client {
-	wsAddress := "ws://" + address + "/ws"
-	httpAddress := "http://" + address
 	return &Client{
 		Sensors:     sensors,
 		Actuators:   actuators,
-		wsAddress:   wsAddress,
+		wsAddress:   fmt.Sprintf("ws://%s/ws", address),
 		wsConn:      nil,
-		httpAddress: httpAddress,
+		httpAddress: fmt.Sprintf("http://%s", address),
 		httpClient:  &http.Client{},
 	}
 }

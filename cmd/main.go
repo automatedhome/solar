@@ -321,7 +321,6 @@ func main() {
 		s := evokClient.GetSensors()
 
 		cfg := hass.GetSettings()
-		log.Printf("Current settings: %+v", cfg)
 
 		if cfg.SolarEmergency.Value != 0 && circuitRunning {
 			setStatus("emergency shutoff")

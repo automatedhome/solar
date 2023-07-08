@@ -225,6 +225,8 @@ func (c *Client) SetValue(dev, circuit string, value float64) error {
 		jsonValue, _ = json.Marshal(data)
 	}
 
+	log.Printf("Sending value %+v to %s", jsonValue, address)
+
 	req, err := http.NewRequest("POST", address, bytes.NewBuffer(jsonValue))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

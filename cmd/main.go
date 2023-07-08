@@ -31,6 +31,8 @@ var (
 	lastPass       time.Time
 	systemStatus   Status
 
+	emergencyShutoff bool
+
 	hass       *homeassistant.Client
 	evokClient *evok.Client
 )
@@ -43,6 +45,7 @@ type metrics struct {
 	flowRate        prometheus.Gauge
 	circuitRunning  prometheus.Gauge
 	controlDelta    prometheus.Gauge
+	emergencyTotal  prometheus.Counter
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -81,6 +84,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Namespace: "solar",
 			Name:      "temperature_delta_celsius",
 			Help:      "Temperature delta used for setting flow rate",
+		}),
+		emergencyTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "solar",
+			Name:      "emergency_total",
+			Help:      "Increase when emergency shutoff is triggered",
 		}),
 	}
 
@@ -265,6 +273,9 @@ func init() {
 	setStatus("startup")
 
 	stop("SYSTEM RESET")
+
+	// TODO: Move this to home assistant
+	emergencyShutoff = false
 }
 
 func main() {
@@ -315,6 +326,13 @@ func main() {
 		s := evokClient.GetSensors()
 
 		cfg := hass.GetSettings()
+
+		if emergencyShutoff {
+			setStatus("emergency shutoff")
+			stop("Emergency shutoff")
+			promMetrics.emergencyTotal.Inc()
+			continue
+		}
 
 		delta = (s.SolarUp.Value+s.SolarOut.Value)/2 - s.SolarIn.Value
 		systemStatus.Delta = delta

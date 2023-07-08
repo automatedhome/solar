@@ -24,6 +24,8 @@ sensors:
     dev: "temp"
     circuit: "28FFABCDEFFEDCBA"
 settings:
+  solarEmergency:
+    entity_id: "input_boolean.solar_emergency_shutoff"
   solarCritical:
     entity_id: "input_number.solar_critical"
   solarOn:

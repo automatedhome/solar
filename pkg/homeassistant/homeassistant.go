@@ -10,11 +10,12 @@ import (
 )
 
 type Settings struct {
-	SolarCritical Entity       `yaml:"solarCritical"`
-	SolarOn       Entity       `yaml:"solarOn"`
-	SolarOff      Entity       `yaml:"solarOff"`
-	TankMax       Entity       `yaml:"tankMax"`
-	Flow          FlowSettings `yaml:"flow"`
+	SolarEmergency Entity       `yaml:"solarEmergency"`
+	SolarCritical  Entity       `yaml:"solarCritical"`
+	SolarOn        Entity       `yaml:"solarOn"`
+	SolarOff       Entity       `yaml:"solarOff"`
+	TankMax        Entity       `yaml:"tankMax"`
+	Flow           FlowSettings `yaml:"flow"`
 }
 
 type FlowSettings struct {
@@ -50,6 +51,10 @@ func (c *Client) UpdateAll() error {
 	var errs []error
 	var err error
 
+	err = c.updateEntityValue(&c.Settings.SolarEmergency)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	err = c.updateEntityValue(&c.Settings.SolarCritical)
 	if err != nil {
 		errs = append(errs, err)
